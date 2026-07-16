@@ -30,6 +30,15 @@ export default function GameArena({
   // Sound state
   const [soundEnabled, setSoundEnabled] = useState(true);
 
+  // Immersive physical 3D Cabinet Simulator mode matching uploaded photo
+  const [isCabinetMode, setIsCabinetMode] = useState(true);
+
+  // Visual button flash states for the cabinet mockup
+  const [cabinetButtonFlashes, setCabinetButtonFlashes] = useState<{ [key: string]: boolean }>({});
+
+  // Coin drop animation visual feedback state
+  const [coinDropFeedback, setCoinDropFeedback] = useState(false);
+
   // Freeze Screen state
   const [freezeTimer, setFreezeTimer] = useState(0);
 
@@ -151,7 +160,7 @@ export default function GameArena({
   };
 
   // Helper to trigger synth sound effects using Web Audio API
-  const playSynthSound = (type: "shoot" | "hit" | "capture" | "boss" | "freeze" | "explosion") => {
+  const playSynthSound = (type: "shoot" | "hit" | "capture" | "boss" | "freeze" | "explosion" | "coin_drop") => {
     if (!soundEnabled) return;
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -168,6 +177,15 @@ export default function GameArena({
         gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.15);
         osc.start();
         osc.stop(ctx.currentTime + 0.15);
+      } else if (type === "coin_drop") {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+        osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.08); // A5
+        osc.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.15); // D6
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.35);
       } else if (type === "hit") {
         osc.type = "sine";
         osc.frequency.setValueAtTime(150, ctx.currentTime);
@@ -1107,6 +1125,23 @@ export default function GameArena({
 
     bulletsRef.current.push(bullet);
     playSynthSound("shoot");
+
+    // Flash physical shoot button on cabinet console simulation
+    setCabinetButtonFlashes((prev) => ({ ...prev, shoot: true }));
+    setTimeout(() => {
+      setCabinetButtonFlashes((prev) => ({ ...prev, shoot: false }));
+    }, 120);
+  };
+
+  // Handle Simulated Physical Coin Insertion
+  const handleCoinInsert = () => {
+    playSynthSound("coin_drop");
+    setCoinDropFeedback(true);
+    setUserBalance((prev) => prev + 1000);
+    addLog("ECONOMY", "Physical Coin drop detected: +1,000 coins loaded via Cabinet Seat 1 slot.", "info");
+    setTimeout(() => {
+      setCoinDropFeedback(false);
+    }, 1500);
   };
 
   // Adjust bet levels (cannon levels)
@@ -1127,100 +1162,442 @@ export default function GameArena({
   };
 
   return (
-    <div className="flex flex-col h-[620px] bg-slate-950 text-slate-100 rounded-xl overflow-hidden border border-slate-800 shadow-2xl relative font-sans">
-      {/* HUD Header Bar */}
-      <div className="bg-slate-900 px-4 py-2 flex justify-between items-center border-b border-slate-800 select-none text-xs">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
-            <Coins className="w-4 h-4" />
-            <span className="font-mono text-sm">${hudStats.coins.toLocaleString()}</span>
-          </div>
-          <div className="text-slate-400">
-            Score: <span className="font-mono font-bold text-slate-100">{hudStats.score.toLocaleString()}</span>
-          </div>
-          <div className="text-slate-500 hidden sm:inline">
-            Hit Ratio: <span className="font-mono">{hudStats.shoots ? Math.round((hudStats.hits / hudStats.shoots) * 100) : 0}%</span>
-          </div>
+    <div className="flex flex-col gap-5 font-sans antialiased">
+      {/* Simulation Chassis Mode Selector */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900 border border-slate-800 rounded-xl p-3 shadow-lg select-none gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping"></span>
+          <span className="text-xs font-black uppercase text-emerald-400 tracking-wider">Chassis Hardware Controller</span>
         </div>
-
-        {/* Weapons Selection Controls */}
-        <div className="flex gap-1 bg-slate-950 p-0.5 rounded border border-slate-800">
-          {[
-            { type: WeaponType.STANDARD, label: "Std Cannon" },
-            { type: WeaponType.LASER, label: "Glow Laser" },
-            { type: WeaponType.DRILL, label: "Drill Missle" },
-          ].map((w) => (
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <span className="text-[10px] uppercase font-bold text-slate-400 hidden lg:inline">Chassis Model:</span>
+          <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800/60 w-full sm:w-auto">
             <button
-              key={w.type}
-              onClick={() => handleWeaponChange(w.type)}
-              className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${
-                activeWeapon === w.type
-                  ? "bg-emerald-600 text-white shadow"
+              onClick={() => setIsCabinetMode(false)}
+              className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${
+                !isCabinetMode
+                  ? "bg-emerald-600 text-slate-950 shadow-md font-extrabold"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              {w.label}
+              💻 Flat Monitor
             </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Sound toggle */}
-          <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className="text-slate-400 hover:text-emerald-400 transition-all p-1"
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
-
-          <span className="px-1.5 py-0.5 bg-emerald-950 text-emerald-400 font-mono text-[10px] rounded border border-emerald-800/40">
-            Live Ping: 28ms
-          </span>
-        </div>
-      </div>
-
-      {/* Main Canvas Space */}
-      <div ref={containerRef} className="flex-1 bg-slate-950 relative overflow-hidden cursor-crosshair">
-        <canvas
-          ref={canvasRef}
-          onClick={handleCanvasClick}
-          className="absolute inset-0 w-full h-full block"
-        />
-
-        {/* Bottom User Controls HUD Overlay */}
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-900/90 border border-emerald-500/30 px-4 py-2.5 rounded-lg flex items-center gap-3 select-none backdrop-blur shadow-xl">
-          <button
-            onClick={decreaseBet}
-            className="w-7 h-7 bg-slate-950 text-slate-100 font-black rounded border border-slate-800 hover:border-emerald-500 hover:bg-slate-900 transition-all text-xs"
-          >
-            -
-          </button>
-          <div className="text-center w-24">
-            <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold">Cannon Level</div>
-            <div className="text-sm font-black font-mono text-emerald-400">{playerBet}</div>
-          </div>
-          <button
-            onClick={increaseBet}
-            className="w-7 h-7 bg-slate-950 text-slate-100 font-black rounded border border-slate-800 hover:border-emerald-500 hover:bg-slate-900 transition-all text-xs"
-          >
-            +
-          </button>
-        </div>
-
-        {/* Quick Emote Reactions Wheel Sidepanel */}
-        <div className="absolute left-3 bottom-16 flex flex-col gap-1.5 bg-slate-900/85 p-1.5 rounded-lg border border-slate-800 select-none backdrop-blur shadow-lg">
-          <div className="text-[8px] text-slate-500 font-bold text-center">EMOTE</div>
-          {EMOTES.map((emote) => (
             <button
-              key={emote}
-              onClick={() => triggerUserEmote(emote)}
-              className="w-7 h-7 hover:scale-125 transition-all flex items-center justify-center bg-slate-950 rounded text-sm border border-slate-900 hover:border-emerald-500"
+              onClick={() => setIsCabinetMode(true)}
+              className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${
+                isCabinetMode
+                  ? "bg-amber-500 text-slate-950 shadow-md font-extrabold"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
             >
-              {emote}
+              🕹️ Table Cabinet
             </button>
-          ))}
+          </div>
         </div>
       </div>
+
+      {isCabinetMode ? (
+        /* Immersive 3D/Flat Physical Arcade Table Cabinet View Mode */
+        <div className="w-full flex flex-col items-center justify-center bg-slate-950/60 p-4 sm:p-6 border border-slate-900 rounded-2xl relative overflow-hidden shadow-2xl">
+          
+          {/* Ambient lighting feedback overlay */}
+          <div className="absolute inset-0 bg-radial-gradient-slate pointer-events-none opacity-20"></div>
+
+          {/* Floating cash deposit feedback animation */}
+          {coinDropFeedback && (
+            <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-amber-500 text-slate-950 px-5 py-2.5 rounded-full font-black text-xs shadow-[0_0_25px_rgba(245,158,11,1.0)] animate-bounce z-50 flex items-center gap-1.5 border-2 border-amber-300">
+              🪙 COIN DROPPED: +$1,000 AUD DEPOSITED
+            </div>
+          )}
+
+          {/* Table Cabinet Deck Structure */}
+          <div className="w-full max-w-4xl bg-gradient-to-b from-stone-200 via-stone-300 to-stone-400 rounded-3xl p-5 sm:p-7 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] border-4 border-stone-100 flex flex-col relative">
+            
+            {/* Upper Table Highlight Bevel */}
+            <div className="absolute top-2 left-6 right-6 h-1 bg-white rounded-full opacity-65"></div>
+
+            {/* Blinking Perimeter Pin-Lights (replicates the small bulb light indicators in photo) */}
+            <div className="absolute top-3.5 left-8 right-8 flex justify-between pointer-events-none">
+              {[...Array(8)].map((_, i) => (
+                <div
+                  key={`l-top-${i}`}
+                  className="w-3.5 h-3.5 bg-gradient-to-tr from-white via-amber-100 to-amber-300 border border-stone-400 rounded-full shadow-[0_0_12px_rgba(255,253,220,1.0)] transition-all"
+                  style={{
+                    animation: `pulse 0.8s infinite alternate ${i * 120}ms`,
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Left Bezel Light Bulbs */}
+            <div className="absolute top-12 bottom-36 left-4.5 flex flex-col justify-between pointer-events-none">
+              {[...Array(3)].map((_, i) => (
+                <div
+                  key={`l-left-${i}`}
+                  className="w-3.5 h-3.5 bg-gradient-to-tr from-white via-amber-100 to-amber-300 border border-stone-400 rounded-full shadow-[0_0_12px_rgba(255,253,220,1.0)] animate-pulse"
+                  style={{ animationDelay: `${i * 180}ms` }}
+                />
+              ))}
+            </div>
+
+            {/* Right Bezel Light Bulbs */}
+            <div className="absolute top-12 bottom-36 right-4.5 flex flex-col justify-between pointer-events-none">
+              {[...Array(3)].map((_, i) => (
+                <div
+                  key={`l-right-${i}`}
+                  className="w-3.5 h-3.5 bg-gradient-to-tr from-white via-amber-100 to-amber-300 border border-stone-400 rounded-full shadow-[0_0_12px_rgba(255,253,220,1.0)] animate-pulse"
+                  style={{ animationDelay: `${i * 220}ms` }}
+                />
+              ))}
+            </div>
+
+            {/* Inner Dark Bezel Frame surrounding the LED Display Panel */}
+            <div className="bg-[#1e293b] rounded-2xl p-4 border-[12px] border-[#334155] shadow-[inset_0_4px_20px_rgba(0,0,0,0.95),0_12px_24px_rgba(0,0,0,0.4)] flex flex-col relative z-10 overflow-hidden">
+              
+              {/* Responsive Game Canvas Screen */}
+              <div ref={containerRef} className="w-full h-[360px] bg-slate-950 relative overflow-hidden cursor-crosshair border border-slate-900 rounded-lg shadow-2xl">
+                <canvas
+                  ref={canvasRef}
+                  onClick={handleCanvasClick}
+                  className="absolute inset-0 w-full h-full block"
+                />
+
+                {/* Ocean Freeze Filter overlay */}
+                {freezeTimer > 0 && (
+                  <div className="absolute inset-0 bg-sky-200/20 border-4 border-[#38bdf8] pointer-events-none flex items-center justify-center">
+                    <span className="bg-slate-950/80 px-3 py-1.5 rounded-lg text-xs font-black text-[#38bdf8] border border-[#38bdf8]/40 animate-pulse">
+                      COLD FREEZE: {Math.ceil(freezeTimer / 30)}s
+                    </span>
+                  </div>
+                )}
+
+                {/* Real-time Overlay HUD display inside Screen Bezel */}
+                <div className="absolute top-3 left-3 bg-slate-900/90 border border-slate-800/80 px-2.5 py-1.5 rounded font-mono text-[9px] text-slate-300 select-none flex items-center gap-3 shadow-md">
+                  <div className="flex items-center gap-1 text-emerald-400 font-bold">
+                    <Coins className="w-3.5 h-3.5" />
+                    <span>${hudStats.coins.toLocaleString()}</span>
+                  </div>
+                  <span className="text-slate-700">|</span>
+                  <div>Score: <span className="text-white font-bold">{hudStats.score.toLocaleString()}</span></div>
+                </div>
+
+                <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 bg-[#10b981]/15 text-[#10b981] text-[8px] font-bold tracking-wider rounded uppercase border border-[#10b981]/20">
+                    Chassis #201 Active
+                  </span>
+                </div>
+
+                {/* Cannon trigger assist text */}
+                <div className="absolute bottom-3 right-3 bg-slate-900/80 px-2 py-1 rounded text-[8px] font-bold text-slate-400 pointer-events-none select-none">
+                  Click Screen viewport to aim & fire bullets
+                </div>
+              </div>
+            </div>
+
+            {/* Wooden Table Deck Control stations (Seat Layout representation matching real table!) */}
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-4 gap-4 relative z-20">
+              
+              {/* Station 2: Bot Player Deck (Top-Left) */}
+              <div className="bg-stone-300/85 border border-stone-400/60 p-2.5 rounded-xl shadow-md flex flex-col items-center">
+                <span className="text-[9px] font-black text-stone-600 uppercase tracking-widest mb-1.5">Station 2 (Bot)</span>
+                <div className="flex items-center gap-4">
+                  {/* Dynamic Tilting Joystick */}
+                  <div className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center relative shadow-inner border border-stone-400">
+                    <div
+                      className="w-5 h-5 rounded-full bg-gradient-to-tr from-stone-200 to-blue-500 border border-stone-300 shadow-md absolute transition-all duration-100"
+                      style={{
+                        transform: `translate(${Math.cos(playersRef.current[2]?.angle || 0) * 8}px, ${Math.sin(playersRef.current[2]?.angle || 0) * 8}px)`,
+                      }}
+                    />
+                  </div>
+                  {/* Fire button flashes on action */}
+                  <div className="flex flex-col items-center">
+                    <div className={`w-6 h-6 rounded-full border border-stone-400 bg-orange-500/20 transition-all ${Math.random() < 0.22 ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]' : ''}`} />
+                    <span className="text-[7px] text-stone-500 font-bold mt-1">FIRE</span>
+                  </div>
+                </div>
+                <span className="text-[8px] font-mono font-bold text-blue-600 mt-1.5">${hudStats.botCoins[1].toLocaleString()}</span>
+              </div>
+
+              {/* Station 1: PLAYER 1 (YOU) Console (Fully Interactive control deck!) */}
+              <div className="md:col-span-2 bg-gradient-to-b from-stone-100 to-stone-200 border-2 border-amber-500/40 p-3 rounded-xl shadow-lg flex flex-col items-center relative overflow-hidden">
+                <div className="absolute -inset-2 bg-amber-500/5 rounded-full filter blur-md pointer-events-none"></div>
+
+                <div className="flex items-center justify-between w-full border-b border-stone-300/80 pb-1.5 mb-2.5">
+                  <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1">
+                    🕹️ Station 1 (Player 1 - You)
+                  </span>
+                  <span className="text-[9px] font-mono font-extrabold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">${hudStats.coins.toLocaleString()}</span>
+                </div>
+
+                <div className="flex items-center gap-6">
+                  
+                  {/* Physical Aim stick. Swivels dynamically in 360 degrees as user aims! */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-14 h-14 bg-zinc-950 rounded-full border-2 border-stone-400 flex items-center justify-center relative shadow-inner">
+                      <div className="w-10 h-10 bg-zinc-900 rounded-full absolute pointer-events-none"></div>
+                      <div
+                        className="w-7 h-7 rounded-full bg-gradient-to-tr from-slate-200 via-stone-100 to-emerald-400 border border-stone-300 shadow-[0_5px_10px_rgba(0,0,0,0.5),0_0_8px_rgba(16,185,129,0.3)] absolute transition-all duration-75"
+                        style={{
+                          transform: `translate(${Math.cos(playersRef.current[0].angle) * 11}px, ${Math.sin(playersRef.current[0].angle) * 11}px)`,
+                        }}
+                      />
+                    </div>
+                    <span className="text-[8px] text-stone-500 font-black mt-1 uppercase tracking-wider">AIM STICK</span>
+                  </div>
+
+                  {/* Physical Arcade Console Push Buttons */}
+                  <div className="flex items-center gap-2">
+                    
+                    {/* Decrease Bet Button */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        onClick={decreaseBet}
+                        className="w-8 h-8 rounded-full bg-orange-600 border border-orange-400 hover:brightness-110 active:scale-95 transition-all text-[8px] font-black text-white shadow-md flex items-center justify-center"
+                      >
+                        DEC
+                      </button>
+                      <span className="text-[7px] text-stone-500 font-bold mt-1">BET -</span>
+                    </div>
+
+                    {/* Level display screen */}
+                    <div className="bg-zinc-950 border border-stone-300 px-2 py-1 rounded text-center w-14 shadow-inner">
+                      <div className="text-[7px] text-slate-500 uppercase font-bold">LVL</div>
+                      <div className="text-xs font-black font-mono text-emerald-400">{playerBet}</div>
+                    </div>
+
+                    {/* Increase Bet Button */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        onClick={increaseBet}
+                        className="w-8 h-8 rounded-full bg-orange-500 border border-orange-300 hover:brightness-110 active:scale-95 transition-all text-[8px] font-black text-white shadow-md flex items-center justify-center"
+                      >
+                        INC
+                      </button>
+                      <span className="text-[7px] text-stone-500 font-bold mt-1">BET +</span>
+                    </div>
+
+                    {/* Gun type Toggle Button */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        onClick={() => {
+                          const weapons = [WeaponType.STANDARD, WeaponType.LASER, WeaponType.DRILL];
+                          const nextIdx = (weapons.indexOf(activeWeapon) + 1) % weapons.length;
+                          handleWeaponChange(weapons[nextIdx]);
+                        }}
+                        className="w-8 h-8 rounded-full bg-cyan-600 border border-cyan-400 hover:brightness-110 active:scale-95 transition-all text-[8px] font-black text-white shadow-md flex items-center justify-center"
+                      >
+                        WEAP
+                      </button>
+                      <span className="text-[7px] text-stone-500 font-bold mt-1">GUN</span>
+                    </div>
+
+                    {/* Big Orange Shoot Switch! Flashes bright orange on fire */}
+                    <div className="flex flex-col items-center pl-2 border-l border-stone-300/80">
+                      <button
+                        onClick={() => {
+                          const canvas = canvasRef.current;
+                          if (!canvas) return;
+                          const rect = canvas.getBoundingClientRect();
+                          const targetX = rect.left + rect.width / 2 + Math.cos(playersRef.current[0].angle) * 150;
+                          const targetY = rect.top + rect.height - 30 + Math.sin(playersRef.current[0].angle) * 150;
+                          
+                          const mockEvent = {
+                            clientX: targetX,
+                            clientY: targetY,
+                          };
+                          handleCanvasClick(mockEvent as any);
+                        }}
+                        className={`w-11 h-11 rounded-full bg-amber-500 border-2 border-amber-300 hover:brightness-110 active:scale-90 transition-all text-[9px] font-black text-slate-950 shadow-md shadow-amber-500/20 flex items-center justify-center ${
+                          cabinetButtonFlashes.shoot ? 'brightness-125 scale-90 shadow-[0_0_15px_rgba(245,158,11,0.8)]' : ''
+                        }`}
+                      >
+                        SHOOT
+                      </button>
+                      <span className="text-[7px] text-stone-600 font-black mt-1 uppercase tracking-wider">FIRE</span>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+
+              {/* Station 3: Bot Player Deck (Top-Right) */}
+              <div className="bg-stone-300/85 border border-stone-400/60 p-2.5 rounded-xl shadow-md flex flex-col items-center">
+                <span className="text-[9px] font-black text-stone-600 uppercase tracking-widest mb-1.5">Station 3 (Bot)</span>
+                <div className="flex items-center gap-4">
+                  {/* Dynamic Tilting Joystick */}
+                  <div className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center relative shadow-inner border border-stone-400">
+                    <div
+                      className="w-5 h-5 rounded-full bg-gradient-to-tr from-stone-200 to-purple-500 border border-stone-300 shadow-md absolute transition-all duration-100"
+                      style={{
+                        transform: `translate(${Math.cos(playersRef.current[3]?.angle || 0) * 8}px, ${Math.sin(playersRef.current[3]?.angle || 0) * 8}px)`,
+                      }}
+                    />
+                  </div>
+                  {/* Fire button flashes on action */}
+                  <div className="flex flex-col items-center">
+                    <div className={`w-6 h-6 rounded-full border border-stone-400 bg-orange-500/20 transition-all ${Math.random() < 0.22 ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]' : ''}`} />
+                    <span className="text-[7px] text-stone-500 font-bold mt-1">FIRE</span>
+                  </div>
+                </div>
+                <span className="text-[8px] font-mono font-bold text-purple-600 mt-1.5">${hudStats.botCoins[2].toLocaleString()}</span>
+              </div>
+
+            </div>
+
+            {/* Lower Cabinet Stand Base (Replicates gray laminate doors & key locks in photo) */}
+            <div className="mt-6 bg-gradient-to-r from-stone-200 via-stone-300 to-stone-400 border-t border-stone-400/80 py-4 px-6 grid grid-cols-1 md:grid-cols-4 gap-4 rounded-b-2xl shadow-xl border-x-4 border-b-4 border-stone-400 relative">
+              
+              {/* Left Door node with Key lock */}
+              <div className="border-r border-stone-400/50 flex flex-col justify-between h-20 pr-3">
+                <div className="flex items-center gap-1.5 opacity-65">
+                  <div className="w-3.5 h-3.5 bg-zinc-800 rounded-full border border-zinc-600 relative flex items-center justify-center">
+                    <div className="w-1.5 h-1.5 bg-amber-600 rounded-sm"></div>
+                  </div>
+                  <span className="text-[8px] text-stone-600 font-bold font-mono">NODE_LOCK_A</span>
+                </div>
+                <div className="text-[7px] font-mono text-stone-500">CABINET_SECTOR_01</div>
+              </div>
+
+              {/* Interactive Coin Door (Insert Coins to increase live balance!) */}
+              <div className="md:col-span-2 flex justify-center items-center">
+                <div
+                  onClick={handleCoinInsert}
+                  className="bg-neutral-850 border-2 border-neutral-700 hover:border-amber-500 transition-all rounded-lg px-6 py-2.5 flex items-center gap-6 shadow-[inset_0_0_12px_rgba(0,0,0,0.85)] cursor-pointer group active:scale-95 bg-zinc-900"
+                >
+                  {/* Slot A */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-1 h-5 bg-amber-500 group-hover:bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)] animate-pulse rounded-full" />
+                    <div className="text-[6px] font-black text-amber-500/80 mt-1">25¢ INSERT TOKENS</div>
+                  </div>
+                  {/* Central Key */}
+                  <div className="flex flex-col items-center border-x border-neutral-800 px-4">
+                    <div className="w-4 h-4 bg-zinc-950 rounded-full border border-zinc-600 flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 bg-yellow-500 rounded-sm" />
+                    </div>
+                    <div className="text-[5px] text-neutral-400 font-mono mt-1">LOCK REFILL</div>
+                  </div>
+                  {/* Slot B */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-1 h-5 bg-amber-500 group-hover:bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)] animate-pulse rounded-full" />
+                    <div className="text-[6px] font-black text-amber-500/80 mt-1">COIN REJECT</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Door node with Key lock */}
+              <div className="border-l border-stone-400/50 flex flex-col justify-between h-20 pl-3 text-right">
+                <div className="flex items-center justify-end gap-1.5 opacity-65">
+                  <span className="text-[8px] text-stone-600 font-bold font-mono">NODE_LOCK_B</span>
+                  <div className="w-3.5 h-3.5 bg-zinc-800 rounded-full border border-zinc-600 relative flex items-center justify-center">
+                    <div className="w-1.5 h-1.5 bg-amber-600 rounded-sm"></div>
+                  </div>
+                </div>
+                <div className="text-[7px] font-mono text-stone-500">OPERATOR_OVERRIDE_04</div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      ) : (
+        /* Standard Flat Screen Mode */
+        <div className="flex flex-col h-[620px] bg-slate-950 text-slate-100 rounded-xl overflow-hidden border border-slate-800 shadow-2xl relative font-sans">
+          {/* HUD Header Bar */}
+          <div className="bg-slate-900 px-4 py-2 flex justify-between items-center border-b border-slate-800 select-none text-xs">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                <Coins className="w-4 h-4" />
+                <span className="font-mono text-sm">${hudStats.coins.toLocaleString()}</span>
+              </div>
+              <div className="text-slate-400">
+                Score: <span className="font-mono font-bold text-slate-100">{hudStats.score.toLocaleString()}</span>
+              </div>
+              <div className="text-slate-500 hidden sm:inline">
+                Hit Ratio: <span className="font-mono">{hudStats.shoots ? Math.round((hudStats.hits / hudStats.shoots) * 100) : 0}%</span>
+              </div>
+            </div>
+
+            {/* Weapons Selection Controls */}
+            <div className="flex gap-1 bg-slate-950 p-0.5 rounded border border-slate-800">
+              {[
+                { type: WeaponType.STANDARD, label: "Std Cannon" },
+                { type: WeaponType.LASER, label: "Glow Laser" },
+                { type: WeaponType.DRILL, label: "Drill Missle" },
+              ].map((w) => (
+                <button
+                  key={w.type}
+                  onClick={() => handleWeaponChange(w.type)}
+                  className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${
+                    activeWeapon === w.type
+                      ? "bg-emerald-600 text-white shadow"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Sound toggle */}
+              <button
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                className="text-slate-400 hover:text-emerald-400 transition-all p-1"
+              >
+                {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </button>
+
+              <span className="px-1.5 py-0.5 bg-emerald-950 text-emerald-400 font-mono text-[10px] rounded border border-emerald-800/40">
+                Live Ping: 28ms
+              </span>
+            </div>
+          </div>
+
+          {/* Main Canvas Space */}
+          <div ref={containerRef} className="flex-1 bg-slate-950 relative overflow-hidden cursor-crosshair">
+            <canvas
+              ref={canvasRef}
+              onClick={handleCanvasClick}
+              className="absolute inset-0 w-full h-full block"
+            />
+
+            {/* Bottom User Controls HUD Overlay */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-900/90 border border-emerald-500/30 px-4 py-2.5 rounded-lg flex items-center gap-3 select-none backdrop-blur shadow-xl">
+              <button
+                onClick={decreaseBet}
+                className="w-7 h-7 bg-slate-950 text-slate-100 font-black rounded border border-slate-800 hover:border-emerald-500 hover:bg-slate-900 transition-all text-xs"
+              >
+                -
+              </button>
+              <div className="text-center w-24">
+                <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold">Cannon Level</div>
+                <div className="text-sm font-black font-mono text-emerald-400">{playerBet}</div>
+              </div>
+              <button
+                onClick={increaseBet}
+                className="w-7 h-7 bg-slate-950 text-slate-100 font-black rounded border border-slate-800 hover:border-emerald-500 hover:bg-slate-900 transition-all text-xs"
+              >
+                +
+              </button>
+            </div>
+
+            {/* Quick Emote Reactions Wheel Sidepanel */}
+            <div className="absolute left-3 bottom-16 flex flex-col gap-1.5 bg-slate-900/85 p-1.5 rounded-lg border border-slate-800 select-none backdrop-blur shadow-lg">
+              <div className="text-[8px] text-slate-500 font-bold text-center">EMOTE</div>
+              {EMOTES.map((emote) => (
+                <button
+                  key={emote}
+                  onClick={() => triggerUserEmote(emote)}
+                  className="w-7 h-7 hover:scale-125 transition-all flex items-center justify-center bg-slate-950 rounded text-sm border border-slate-900 hover:border-emerald-500"
+                >
+                  {emote}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
