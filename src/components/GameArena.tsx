@@ -121,6 +121,40 @@ export default function GameArena({
       color: "#a855f7", // Purple
       angle: Math.PI / 2,
     },
+    {
+      id: "bot_4",
+      name: "NeonSlayer",
+      coins: 6000,
+      netWorth: 6000,
+      level: 33,
+      gunLevel: 20,
+      weaponType: WeaponType.STANDARD,
+      isBot: true,
+      ping: 36,
+      connected: true,
+      score: 0,
+      shootsCount: 0,
+      hitCount: 0,
+      color: "#ec4899", // Rose Pink
+      angle: -3 * Math.PI / 4,
+    },
+    {
+      id: "bot_5",
+      name: "Apex_Predator",
+      coins: 9500,
+      netWorth: 9500,
+      level: 50,
+      gunLevel: 45,
+      weaponType: WeaponType.STANDARD,
+      isBot: true,
+      ping: 24,
+      connected: true,
+      score: 0,
+      shootsCount: 0,
+      hitCount: 0,
+      color: "#06b6d4", // Cyan
+      angle: Math.PI / 2,
+    },
   ]);
 
   const bulletsRef = useRef<Bullet[]>([]);
@@ -137,9 +171,9 @@ export default function GameArena({
     score: 0,
     shoots: 0,
     hits: 0,
-    botCoins: [4500, 12000, 8500],
-    botNames: ["MegaHunter_Bot", "Cabinet_Seat_3", "VIP_OceanLord"],
-    botEmotes: ["", "", ""],
+    botCoins: [4500, 12000, 8500, 6000, 9500],
+    botNames: ["MegaHunter_Bot", "Cabinet_Seat_3", "VIP_OceanLord", "NeonSlayer", "Apex_Predator"],
+    botEmotes: ["", "", "", "", ""],
   });
 
   // Emotes list for quick triggering
@@ -152,11 +186,13 @@ export default function GameArena({
 
     // Randomize a bot responding
     setTimeout(() => {
-      const responderIdx = Math.floor(Math.random() * 3) + 1;
+      const responderIdx = Math.floor(Math.random() * 5) + 1;
       const botEmotes = ["💥", "👑", "🔥", "🤑", "🎯"];
       const botEmote = botEmotes[Math.floor(Math.random() * botEmotes.length)];
-      playersRef.current[responderIdx].lastEmote = botEmote;
-      playersRef.current[responderIdx].emoteTimer = 90;
+      if (playersRef.current[responderIdx]) {
+        playersRef.current[responderIdx].lastEmote = botEmote;
+        playersRef.current[responderIdx].emoteTimer = 90;
+      }
     }, 1200);
   };
 
@@ -404,6 +440,23 @@ export default function GameArena({
             player.gunLevel = 20;
             player.weaponType = WeaponType.DRILL;
           } 
+          else if (idx === 4) {
+            // Bot 4: "Quick Fire" - Targets any closest active fish and spams rapidly
+            target = fishRef.current.find((f) => !f.isDying);
+            player.gunLevel = 10;
+            player.weaponType = WeaponType.STANDARD;
+          }
+          else if (idx === 5) {
+            // Bot 5: "Heavy Cannoneer" - Targets highest HP fish, slow but extremely heavy laser
+            const heavyFish = fishRef.current.filter((f) => f.hp > 60 && !f.isDying);
+            if (heavyFish.length > 0) {
+              target = heavyFish[0];
+            } else {
+              target = fishRef.current.find((f) => !f.isDying);
+            }
+            player.gunLevel = 150;
+            player.weaponType = WeaponType.LASER;
+          }
           else {
             // Bot 3: "VIP Ocean Lord / Tactician" - Targets special freeze/bomb, or closest fish
             const specials = fishRef.current.filter((f) => f.specialTrigger && !f.isDying);
@@ -428,15 +481,24 @@ export default function GameArena({
             let canonX = 0;
             let canonY = 0;
 
-            // Anchor locations for seats:
-            if (idx === 1) {
+            // Anchor locations for all 6 seats:
+            if (idx === 0) { // Bottom-Middle
+              canonX = width / 2;
+              canonY = height - 20;
+            } else if (idx === 1) { // Bottom-Right
               canonX = width - 150;
               canonY = height - 20;
-            } else if (idx === 2) {
+            } else if (idx === 2) { // Top-Left
               canonX = 150;
               canonY = 20;
-            } else if (idx === 3) {
+            } else if (idx === 3) { // Top-Right
               canonX = width - 150;
+              canonY = 20;
+            } else if (idx === 4) { // Bottom-Left
+              canonX = 150;
+              canonY = height - 20;
+            } else if (idx === 5) { // Top-Middle
+              canonX = width / 2;
               canonY = 20;
             }
 
@@ -450,7 +512,9 @@ export default function GameArena({
 
             // Fire bullet with random chance
             let fireChance = 0.08;
-            if (target.isBoss) fireChance = 0.14; // fire faster at bosses!
+            if (idx === 4) fireChance = 0.16; // Quick Fire fires twice as fast!
+            if (idx === 5) fireChance = 0.04; // Heavy Cannoneer fires slower but heavier!
+            if (target.isBoss) fireChance = Math.min(0.24, fireChance * 1.8); // fire faster at bosses!
             if (idx === 2 && target.hp < 25) fireChance = 0.22; // spam fires if close to stealing kill!
 
             if (Math.random() < fireChance) {
@@ -500,7 +564,16 @@ export default function GameArena({
     }
 
     // Particle Burst spawner
-    function createParticles(x: number, y: number, color: string, count: number, type: GameParticle["type"], text?: string) {
+    function createParticles(
+      x: number,
+      y: number,
+      color: string,
+      count: number,
+      type: GameParticle["type"],
+      text?: string,
+      targetX?: number,
+      targetY?: number
+    ) {
       if (type === "text" && text) {
         particlesRef.current.push({
           id: `p_txt_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
@@ -530,8 +603,10 @@ export default function GameArena({
           color: color,
           size: type === "coin" ? Math.random() * 4 + 4 : Math.random() * 3 + 2,
           life: 0,
-          maxLife: type === "coin" ? 50 : Math.random() * 20 + 20,
+          maxLife: type === "coin" ? 65 : Math.random() * 20 + 20,
           type: type,
+          targetX: targetX,
+          targetY: targetY,
         });
       }
     }
@@ -1490,8 +1565,34 @@ export default function GameArena({
                 triggerShake(1.5, 6);
               }
 
+              // Calculate shooter's physical console coordinates to guide flying coins
+              let targetX = canvas.width / 2;
+              let targetY = canvas.height - 20;
+              if (shooter) {
+                const sIdx = playersRef.current.indexOf(shooter);
+                if (sIdx === 0) { // Bottom-Middle
+                  targetX = canvas.width / 2;
+                  targetY = canvas.height - 20;
+                } else if (sIdx === 1) { // Bottom-Right
+                  targetX = canvas.width - 150;
+                  targetY = canvas.height - 20;
+                } else if (sIdx === 2) { // Top-Left
+                  targetX = 150;
+                  targetY = 20;
+                } else if (sIdx === 3) { // Top-Right
+                  targetX = canvas.width - 150;
+                  targetY = 20;
+                } else if (sIdx === 4) { // Bottom-Left
+                  targetX = 150;
+                  targetY = canvas.height - 20;
+                } else if (sIdx === 5) { // Top-Middle
+                  targetX = canvas.width / 2;
+                  targetY = 20;
+                }
+              }
+
               // Trigger special visual effect explosion
-              createParticles(fish.x, fish.y, fish.color, fish.isBoss ? 40 : 15, "coin");
+              createParticles(fish.x, fish.y, fish.color, fish.isBoss ? 40 : 15, "coin", undefined, targetX, targetY);
 
               const rewardCoins = fish.scoreValue * bullet.level;
 
@@ -1559,9 +1660,27 @@ export default function GameArena({
         p.x += p.vx;
         p.y += p.vy;
 
-        // Gravity/float effect for coins
+        // Gravity/float effect or target attraction logic for coins
         if (p.type === "coin") {
-          p.vy += 0.05; // slight falling gravity
+          if (p.targetX !== undefined && p.targetY !== undefined) {
+            if (p.life > 12) {
+              // Gracefully accelerate towards player console anchor points!
+              const dx = p.targetX - p.x;
+              const dy = p.targetY - p.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist > 12) {
+                const speed = Math.min(22, 1.5 + (p.life - 12) * 0.55);
+                p.vx = (dx / dist) * speed;
+                p.vy = (dy / dist) * speed;
+              } else {
+                p.life = p.maxLife; // reached station, disappear
+              }
+            } else {
+              p.vy += 0.04; // initial gravity drift
+            }
+          } else {
+            p.vy += 0.05; // slight falling gravity
+          }
         }
 
         ctx.save();
@@ -1631,17 +1750,23 @@ export default function GameArena({
         
         let anchorX = 0;
         let anchorY = 0;
-        if (idx === 0) {
+        if (idx === 0) { // Bottom-Middle
           anchorX = canvas.width / 2;
           anchorY = canvas.height - 20;
-        } else if (idx === 1) {
+        } else if (idx === 1) { // Bottom-Right
           anchorX = canvas.width - 150;
           anchorY = canvas.height - 20;
-        } else if (idx === 2) {
+        } else if (idx === 2) { // Top-Left
           anchorX = 150;
           anchorY = 20;
-        } else if (idx === 3) {
+        } else if (idx === 3) { // Top-Right
           anchorX = canvas.width - 150;
+          anchorY = 20;
+        } else if (idx === 4) { // Bottom-Left
+          anchorX = 150;
+          anchorY = canvas.height - 20;
+        } else if (idx === 5) { // Top-Middle
+          anchorX = canvas.width / 2;
           anchorY = 20;
         }
 
@@ -1719,6 +1844,8 @@ export default function GameArena({
         // Seat 1: Bottom-Right (width - 150, height - 20)
         // Seat 2: Top-Left (150, 20)
         // Seat 3: Top-Right (width - 150, 20)
+        // Seat 4: Bottom-Left (150, height - 20)
+        // Seat 5: Top-Middle (width / 2, 20)
         if (idx === 0) {
           anchorX = canvas.width / 2;
           anchorY = canvas.height - 20;
@@ -1731,7 +1858,15 @@ export default function GameArena({
         } else if (idx === 3) {
           anchorX = canvas.width - 150;
           anchorY = 20;
+        } else if (idx === 4) {
+          anchorX = 150;
+          anchorY = canvas.height - 20;
+        } else if (idx === 5) {
+          anchorX = canvas.width / 2;
+          anchorY = 20;
         }
+
+        const isTop = idx === 2 || idx === 3 || idx === 5;
 
         // Draw HUD panel background card in Canvas
         ctx.save();
@@ -1742,7 +1877,7 @@ export default function GameArena({
         ctx.strokeStyle = player.color;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.roundRect(-55, idx < 2 ? -75 : 45, 110, 25, 4);
+        ctx.roundRect(-55, isTop ? 45 : -75, 110, 25, 4);
         ctx.fill();
         ctx.stroke();
 
@@ -1753,13 +1888,13 @@ export default function GameArena({
         ctx.fillText(
           `${player.name}`,
           0,
-          idx < 2 ? -68 : 52
+          isTop ? 52 : -68
         );
         ctx.fillStyle = "#eab308";
         ctx.fillText(
           `$${player.coins.toLocaleString()}`,
           0,
-          idx < 2 ? -58 : 62
+          isTop ? 62 : -58
         );
 
         // Draw Cannon Base Rotator
@@ -1798,7 +1933,7 @@ export default function GameArena({
           ctx.strokeStyle = "#eab308";
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.arc(0, idx < 2 ? -100 : 90, 14, 0, Math.PI * 2);
+          ctx.arc(0, isTop ? 90 : -100, 14, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
 
@@ -1806,7 +1941,7 @@ export default function GameArena({
           ctx.font = "14px sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(player.lastEmote, 0, idx < 2 ? -100 : 90);
+          ctx.fillText(player.lastEmote, 0, isTop ? 90 : -100);
         }
 
         ctx.restore();
@@ -1833,9 +1968,27 @@ export default function GameArena({
           score: playersRef.current[0].score,
           shoots: playersRef.current[0].shootsCount,
           hits: playersRef.current[0].hitCount,
-          botCoins: [playersRef.current[1].coins, playersRef.current[2].coins, playersRef.current[3].coins],
-          botNames: [playersRef.current[1].name, playersRef.current[2].name, playersRef.current[3].name],
-          botEmotes: [playersRef.current[1].lastEmote || "", playersRef.current[2].lastEmote || "", playersRef.current[3].lastEmote || ""],
+          botCoins: [
+            playersRef.current[1]?.coins || 0,
+            playersRef.current[2]?.coins || 0,
+            playersRef.current[3]?.coins || 0,
+            playersRef.current[4]?.coins || 0,
+            playersRef.current[5]?.coins || 0
+          ],
+          botNames: [
+            playersRef.current[1]?.name || "",
+            playersRef.current[2]?.name || "",
+            playersRef.current[3]?.name || "",
+            playersRef.current[4]?.name || "",
+            playersRef.current[5]?.name || ""
+          ],
+          botEmotes: [
+            playersRef.current[1]?.lastEmote || "",
+            playersRef.current[2]?.lastEmote || "",
+            playersRef.current[3]?.lastEmote || "",
+            playersRef.current[4]?.lastEmote || "",
+            playersRef.current[5]?.lastEmote || ""
+          ],
         });
       }
 
@@ -2033,8 +2186,141 @@ export default function GameArena({
               ))}
             </div>
 
+            {/* Wooden Table Deck Control stations: TOP SIDE (Symmetrical) */}
+            <div className="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3.5 relative z-20">
+              
+              {/* Station 2: Bot Player Deck (Top-Left) */}
+              <div className="bg-stone-300/95 border-t-4 border-yellow-500 border-x border-stone-400 p-2.5 rounded-xl shadow-md flex flex-col items-center relative overflow-hidden transition-all hover:scale-[1.02]">
+                {/* Light-up Seat indicator */}
+                <span className="absolute top-1.5 right-2.5 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
+                </span>
+                
+                <span className="text-[9px] font-black text-stone-700 uppercase tracking-widest mb-1">STATION 2 (Bot)</span>
+                <span className="text-[8px] font-bold text-stone-500 truncate max-w-[120px] mb-2">{hudStats.botNames[1]}</span>
+                
+                <div className="flex items-center gap-3">
+                  {/* Dynamic tilt joystick */}
+                  <div className="w-10 h-10 bg-zinc-950 rounded-full flex items-center justify-center relative shadow-inner border border-stone-400">
+                    <div
+                      className="w-5 h-5 rounded-full bg-gradient-to-tr from-stone-200 to-yellow-500 border border-stone-300 shadow-md absolute transition-all duration-100"
+                      style={{
+                        transform: `translate(${Math.cos(playersRef.current[2]?.angle || 0) * 8}px, ${Math.sin(playersRef.current[2]?.angle || 0) * 8}px)`,
+                      }}
+                    />
+                  </div>
+                  {/* Active fire trigger */}
+                  <div className="flex flex-col items-center">
+                    <div className={`w-6 h-6 rounded-full border border-stone-400 transition-all ${
+                      playersRef.current[2]?.lastEmote ? 'bg-yellow-400 animate-bounce' : 'bg-red-500/20'
+                    } ${Math.random() < 0.16 ? 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.8)]' : ''}`} />
+                    <span className="text-[6px] text-stone-500 font-bold mt-1">FIRE</span>
+                  </div>
+                </div>
+                
+                <span className="text-[9px] font-mono font-black text-yellow-700 mt-2">${hudStats.botCoins[1].toLocaleString()}</span>
+                
+                {/* Floating chat bubbles */}
+                {playersRef.current[2]?.lastEmote && (
+                  <div className="absolute bottom-2 left-2 bg-slate-900 border border-yellow-400 text-xs px-1.5 py-0.5 rounded-full animate-bounce shadow-md text-white">
+                    {playersRef.current[2]?.lastEmote}
+                  </div>
+                )}
+              </div>
+
+              {/* Station 6: Bot Player Deck (Top-Middle) - SPACIOUS 2-COLUMN PREMIUM CENTER DECK */}
+              <div className="md:col-span-2 bg-stone-300/95 border-t-4 border-cyan-500 border-x border-stone-400 p-2.5 rounded-xl shadow-md flex flex-col items-center relative overflow-hidden transition-all hover:scale-[1.01]">
+                <span className="absolute top-1.5 right-2.5 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                </span>
+                
+                <span className="text-[9px] font-black text-stone-700 uppercase tracking-widest mb-1">STATION 6 (Bot)</span>
+                <span className="text-[8px] font-bold text-stone-500 truncate max-w-[200px] mb-2">{hudStats.botNames[4]}</span>
+                
+                <div className="flex items-center gap-12">
+                  <div className="flex items-center gap-2">
+                    {/* Joystick */}
+                    <div className="w-10 h-10 bg-zinc-950 rounded-full flex items-center justify-center relative shadow-inner border border-stone-400">
+                      <div
+                        className="w-5 h-5 rounded-full bg-gradient-to-tr from-stone-200 to-cyan-500 border border-stone-300 shadow-md absolute transition-all duration-100"
+                        style={{
+                          transform: `translate(${Math.cos(playersRef.current[5]?.angle || 0) * 8}px, ${Math.sin(playersRef.current[5]?.angle || 0) * 8}px)`,
+                        }}
+                      />
+                    </div>
+                    <span className="text-[7px] text-stone-500 font-bold uppercase tracking-wider">AIM</span>
+                  </div>
+
+                  {/* High tech status LCD */}
+                  <div className="bg-zinc-950 px-2.5 py-1 rounded border border-stone-400 shadow-inner text-center">
+                    <div className="text-[6px] text-slate-500 uppercase font-bold">GUN SKIN</div>
+                    <div className="text-[8px] font-black font-mono text-cyan-400 animate-pulse">HEAVY_LASER</div>
+                  </div>
+
+                  {/* Fire button flashes */}
+                  <div className="flex flex-col items-center">
+                    <div className={`w-6 h-6 rounded-full border border-stone-400 transition-all ${
+                      playersRef.current[5]?.lastEmote ? 'bg-cyan-400 animate-bounce' : 'bg-red-500/20'
+                    } ${Math.random() < 0.12 ? 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]' : ''}`} />
+                    <span className="text-[6px] text-stone-500 font-bold mt-1">FIRE</span>
+                  </div>
+                </div>
+                
+                <span className="text-[9px] font-mono font-black text-cyan-700 mt-2">${hudStats.botCoins[4].toLocaleString()}</span>
+                
+                {/* Floating chat bubble */}
+                {playersRef.current[5]?.lastEmote && (
+                  <div className="absolute bottom-2 left-2 bg-slate-900 border border-cyan-400 text-xs px-1.5 py-0.5 rounded-full animate-bounce shadow-md text-white">
+                    {playersRef.current[5]?.lastEmote}
+                  </div>
+                )}
+              </div>
+
+              {/* Station 3: Bot Player Deck (Top-Right) */}
+              <div className="bg-stone-300/95 border-t-4 border-purple-500 border-x border-stone-400 p-2.5 rounded-xl shadow-md flex flex-col items-center relative overflow-hidden transition-all hover:scale-[1.02]">
+                <span className="absolute top-1.5 right-2.5 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+                </span>
+                
+                <span className="text-[9px] font-black text-stone-700 uppercase tracking-widest mb-1">STATION 3 (Bot)</span>
+                <span className="text-[8px] font-bold text-stone-500 truncate max-w-[120px] mb-2">{hudStats.botNames[2]}</span>
+                
+                <div className="flex items-center gap-3">
+                  {/* Joystick swivels on aim angle */}
+                  <div className="w-10 h-10 bg-zinc-950 rounded-full flex items-center justify-center relative shadow-inner border border-stone-400">
+                    <div
+                      className="w-5 h-5 rounded-full bg-gradient-to-tr from-stone-200 to-purple-500 border border-stone-300 shadow-md absolute transition-all duration-100"
+                      style={{
+                        transform: `translate(${Math.cos(playersRef.current[3]?.angle || 0) * 8}px, ${Math.sin(playersRef.current[3]?.angle || 0) * 8}px)`,
+                      }}
+                    />
+                  </div>
+                  {/* Fire button flashes */}
+                  <div className="flex flex-col items-center">
+                    <div className={`w-6 h-6 rounded-full border border-stone-400 transition-all ${
+                      playersRef.current[3]?.lastEmote ? 'bg-purple-400 animate-bounce' : 'bg-red-500/20'
+                    } ${Math.random() < 0.16 ? 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]' : ''}`} />
+                    <span className="text-[6px] text-stone-500 font-bold mt-1">FIRE</span>
+                  </div>
+                </div>
+                
+                <span className="text-[9px] font-mono font-black text-purple-700 mt-2">${hudStats.botCoins[2].toLocaleString()}</span>
+                
+                {/* Floating chat bubbles */}
+                {playersRef.current[3]?.lastEmote && (
+                  <div className="absolute bottom-2 left-2 bg-slate-900 border border-purple-400 text-xs px-1.5 py-0.5 rounded-full animate-bounce shadow-md text-white">
+                    {playersRef.current[3]?.lastEmote}
+                  </div>
+                )}
+              </div>
+
+            </div>
+
             {/* Inner Dark Bezel Frame surrounding the LED Display Panel */}
-            <div className="bg-[#1e293b] rounded-2xl p-4 border-[12px] border-[#334155] shadow-[inset_0_4px_20px_rgba(0,0,0,0.95),0_12px_24px_rgba(0,0,0,0.4)] flex flex-col relative z-10 overflow-hidden">
+            <div className="bg-[#1e293b] rounded-2xl p-4 border-[12px] border-[#334155] shadow-[inset_0_4px_20px_rgba(0,0,0,0.95),0_12px_24px_rgba(0,0,0,0.4)] flex flex-col relative z-10 overflow-hidden my-1">
               
               {/* Responsive Game Canvas Screen */}
               <div ref={containerRef} className="w-full h-[360px] bg-slate-950 relative overflow-hidden cursor-crosshair border border-slate-900 rounded-lg shadow-2xl">
@@ -2076,37 +2362,54 @@ export default function GameArena({
               </div>
             </div>
 
-            {/* Wooden Table Deck Control stations (Seat Layout representation matching real table!) */}
-            <div className="mt-5 grid grid-cols-1 md:grid-cols-4 gap-4 relative z-20">
+            {/* Wooden Table Deck Control stations: BOTTOM SIDE (Symmetrical) */}
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3.5 relative z-20">
               
-              {/* Station 2: Bot Player Deck (Top-Left) */}
-              <div className="bg-stone-300/85 border border-stone-400/60 p-2.5 rounded-xl shadow-md flex flex-col items-center">
-                <span className="text-[9px] font-black text-stone-600 uppercase tracking-widest mb-1.5">Station 2 (Bot)</span>
-                <div className="flex items-center gap-4">
-                  {/* Dynamic Tilting Joystick */}
-                  <div className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center relative shadow-inner border border-stone-400">
+              {/* Station 5: Bot Player Deck (Bottom-Left) */}
+              <div className="bg-stone-300/95 border-b-4 border-pink-500 border-x border-stone-400 p-2.5 rounded-xl shadow-md flex flex-col items-center relative overflow-hidden transition-all hover:scale-[1.02]">
+                <span className="absolute top-1.5 right-2.5 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-pink-500"></span>
+                </span>
+                
+                <span className="text-[9px] font-black text-stone-700 uppercase tracking-widest mb-1">STATION 5 (Bot)</span>
+                <span className="text-[8px] font-bold text-stone-500 truncate max-w-[120px] mb-2">{hudStats.botNames[3]}</span>
+                
+                <div className="flex items-center gap-3">
+                  {/* Joystick swivels on aim angle */}
+                  <div className="w-10 h-10 bg-zinc-950 rounded-full flex items-center justify-center relative shadow-inner border border-stone-400">
                     <div
-                      className="w-5 h-5 rounded-full bg-gradient-to-tr from-stone-200 to-blue-500 border border-stone-300 shadow-md absolute transition-all duration-100"
+                      className="w-5 h-5 rounded-full bg-gradient-to-tr from-stone-200 to-pink-500 border border-stone-300 shadow-md absolute transition-all duration-100"
                       style={{
-                        transform: `translate(${Math.cos(playersRef.current[2]?.angle || 0) * 8}px, ${Math.sin(playersRef.current[2]?.angle || 0) * 8}px)`,
+                        transform: `translate(${Math.cos(playersRef.current[4]?.angle || 0) * 8}px, ${Math.sin(playersRef.current[4]?.angle || 0) * 8}px)`,
                       }}
                     />
                   </div>
-                  {/* Fire button flashes on action */}
+                  {/* Fire button flashes */}
                   <div className="flex flex-col items-center">
-                    <div className={`w-6 h-6 rounded-full border border-stone-400 bg-orange-500/20 transition-all ${Math.random() < 0.22 ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]' : ''}`} />
-                    <span className="text-[7px] text-stone-500 font-bold mt-1">FIRE</span>
+                    <div className={`w-6 h-6 rounded-full border border-stone-400 transition-all ${
+                      playersRef.current[4]?.lastEmote ? 'bg-pink-400 animate-bounce' : 'bg-red-500/20'
+                    } ${Math.random() < 0.16 ? 'bg-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.8)]' : ''}`} />
+                    <span className="text-[6px] text-stone-500 font-bold mt-1">FIRE</span>
                   </div>
                 </div>
-                <span className="text-[8px] font-mono font-bold text-blue-600 mt-1.5">${hudStats.botCoins[1].toLocaleString()}</span>
+                
+                <span className="text-[9px] font-mono font-black text-pink-700 mt-2">${hudStats.botCoins[3].toLocaleString()}</span>
+                
+                {/* Floating chat bubbles */}
+                {playersRef.current[4]?.lastEmote && (
+                  <div className="absolute bottom-2 left-2 bg-slate-900 border border-pink-400 text-xs px-1.5 py-0.5 rounded-full animate-bounce shadow-md text-white">
+                    {playersRef.current[4]?.lastEmote}
+                  </div>
+                )}
               </div>
 
               {/* Station 1: PLAYER 1 (YOU) Console (Fully Interactive control deck!) */}
-              <div className="md:col-span-2 bg-gradient-to-b from-stone-100 to-stone-200 border-2 border-amber-500/40 p-3 rounded-xl shadow-lg flex flex-col items-center relative overflow-hidden">
-                <div className="absolute -inset-2 bg-amber-500/5 rounded-full filter blur-md pointer-events-none"></div>
+              <div className="md:col-span-2 bg-gradient-to-b from-stone-100 to-stone-200 border-2 border-emerald-500 border-b-8 p-3 rounded-xl shadow-lg flex flex-col items-center relative overflow-hidden transition-all hover:scale-[1.01]">
+                <div className="absolute -inset-2 bg-emerald-500/5 rounded-full filter blur-md pointer-events-none"></div>
 
                 <div className="flex items-center justify-between w-full border-b border-stone-300/80 pb-1.5 mb-2.5">
-                  <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1">
+                  <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-1">
                     🕹️ Station 1 (Player 1 - You)
                   </span>
                   <span className="text-[9px] font-mono font-extrabold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">${hudStats.coins.toLocaleString()}</span>
@@ -2135,7 +2438,7 @@ export default function GameArena({
                     <div className="flex flex-col items-center">
                       <button
                         onClick={decreaseBet}
-                        className="w-8 h-8 rounded-full bg-orange-600 border border-orange-400 hover:brightness-110 active:scale-95 transition-all text-[8px] font-black text-white shadow-md flex items-center justify-center"
+                        className="w-8 h-8 rounded-full bg-orange-600 border border-orange-400 hover:brightness-110 active:scale-95 transition-all text-[8px] font-black text-white shadow-md flex items-center justify-center cursor-pointer"
                       >
                         DEC
                       </button>
@@ -2152,7 +2455,7 @@ export default function GameArena({
                     <div className="flex flex-col items-center">
                       <button
                         onClick={increaseBet}
-                        className="w-8 h-8 rounded-full bg-orange-500 border border-orange-300 hover:brightness-110 active:scale-95 transition-all text-[8px] font-black text-white shadow-md flex items-center justify-center"
+                        className="w-8 h-8 rounded-full bg-orange-500 border border-orange-300 hover:brightness-110 active:scale-95 transition-all text-[8px] font-black text-white shadow-md flex items-center justify-center cursor-pointer"
                       >
                         INC
                       </button>
@@ -2167,7 +2470,7 @@ export default function GameArena({
                           const nextIdx = (weapons.indexOf(activeWeapon) + 1) % weapons.length;
                           handleWeaponChange(weapons[nextIdx]);
                         }}
-                        className="w-8 h-8 rounded-full bg-cyan-600 border border-cyan-400 hover:brightness-110 active:scale-95 transition-all text-[8px] font-black text-white shadow-md flex items-center justify-center"
+                        className="w-8 h-8 rounded-full bg-cyan-600 border border-cyan-400 hover:brightness-110 active:scale-95 transition-all text-[8px] font-black text-white shadow-md flex items-center justify-center cursor-pointer"
                       >
                         WEAP
                       </button>
@@ -2190,7 +2493,7 @@ export default function GameArena({
                           };
                           handleCanvasClick(mockEvent as any);
                         }}
-                        className={`w-11 h-11 rounded-full bg-amber-500 border-2 border-amber-300 hover:brightness-110 active:scale-90 transition-all text-[9px] font-black text-slate-950 shadow-md shadow-amber-500/20 flex items-center justify-center ${
+                        className={`w-11 h-11 rounded-full bg-amber-500 border-2 border-amber-300 hover:brightness-110 active:scale-90 transition-all text-[9px] font-black text-slate-950 shadow-md shadow-amber-500/20 flex items-center justify-center cursor-pointer ${
                           cabinetButtonFlashes.shoot ? 'brightness-125 scale-90 shadow-[0_0_15px_rgba(245,158,11,0.8)]' : ''
                         }`}
                       >
@@ -2201,28 +2504,52 @@ export default function GameArena({
 
                   </div>
                 </div>
+
+                {/* Floating chat bubble */}
+                {playersRef.current[0]?.lastEmote && (
+                  <div className="absolute bottom-2 left-2 bg-slate-900 border border-emerald-400 text-xs px-1.5 py-0.5 rounded-full animate-bounce shadow-md text-white">
+                    {playersRef.current[0]?.lastEmote}
+                  </div>
+                )}
               </div>
 
-              {/* Station 3: Bot Player Deck (Top-Right) */}
-              <div className="bg-stone-300/85 border border-stone-400/60 p-2.5 rounded-xl shadow-md flex flex-col items-center">
-                <span className="text-[9px] font-black text-stone-600 uppercase tracking-widest mb-1.5">Station 3 (Bot)</span>
-                <div className="flex items-center gap-4">
-                  {/* Dynamic Tilting Joystick */}
-                  <div className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center relative shadow-inner border border-stone-400">
+              {/* Station 4: Bot Player Deck (Bottom-Right) */}
+              <div className="bg-stone-300/95 border-b-4 border-blue-500 border-x border-stone-400 p-2.5 rounded-xl shadow-md flex flex-col items-center relative overflow-hidden transition-all hover:scale-[1.02]">
+                <span className="absolute top-1.5 right-2.5 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                </span>
+                
+                <span className="text-[9px] font-black text-stone-700 uppercase tracking-widest mb-1">STATION 4 (Bot)</span>
+                <span className="text-[8px] font-bold text-stone-500 truncate max-w-[120px] mb-2">{hudStats.botNames[0]}</span>
+                
+                <div className="flex items-center gap-3">
+                  {/* Joystick swivels on aim angle */}
+                  <div className="w-10 h-10 bg-zinc-950 rounded-full flex items-center justify-center relative shadow-inner border border-stone-400">
                     <div
-                      className="w-5 h-5 rounded-full bg-gradient-to-tr from-stone-200 to-purple-500 border border-stone-300 shadow-md absolute transition-all duration-100"
+                      className="w-5 h-5 rounded-full bg-gradient-to-tr from-stone-200 to-blue-500 border border-stone-300 shadow-md absolute transition-all duration-100"
                       style={{
-                        transform: `translate(${Math.cos(playersRef.current[3]?.angle || 0) * 8}px, ${Math.sin(playersRef.current[3]?.angle || 0) * 8}px)`,
+                        transform: `translate(${Math.cos(playersRef.current[1]?.angle || 0) * 8}px, ${Math.sin(playersRef.current[1]?.angle || 0) * 8}px)`,
                       }}
                     />
                   </div>
-                  {/* Fire button flashes on action */}
+                  {/* Fire button flashes */}
                   <div className="flex flex-col items-center">
-                    <div className={`w-6 h-6 rounded-full border border-stone-400 bg-orange-500/20 transition-all ${Math.random() < 0.22 ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]' : ''}`} />
-                    <span className="text-[7px] text-stone-500 font-bold mt-1">FIRE</span>
+                    <div className={`w-6 h-6 rounded-full border border-stone-400 transition-all ${
+                      playersRef.current[1]?.lastEmote ? 'bg-blue-400 animate-bounce' : 'bg-red-500/20'
+                    } ${Math.random() < 0.16 ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]' : ''}`} />
+                    <span className="text-[6px] text-stone-500 font-bold mt-1">FIRE</span>
                   </div>
                 </div>
-                <span className="text-[8px] font-mono font-bold text-purple-600 mt-1.5">${hudStats.botCoins[2].toLocaleString()}</span>
+                
+                <span className="text-[9px] font-mono font-black text-blue-700 mt-2">${hudStats.botCoins[0].toLocaleString()}</span>
+                
+                {/* Floating chat bubbles */}
+                {playersRef.current[1]?.lastEmote && (
+                  <div className="absolute bottom-2 left-2 bg-slate-900 border border-blue-400 text-xs px-1.5 py-0.5 rounded-full animate-bounce shadow-md text-white">
+                    {playersRef.current[1]?.lastEmote}
+                  </div>
+                )}
               </div>
 
             </div>

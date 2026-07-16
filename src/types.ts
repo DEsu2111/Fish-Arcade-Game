@@ -96,6 +96,8 @@ export interface GameParticle {
   maxLife: number;
   type: "bubble" | "coin" | "spark" | "hit" | "explosion" | "laser" | "shield" | "text";
   text?: string;
+  targetX?: number;
+  targetY?: number;
 }
 
 export interface AuditLog {
