@@ -1,0 +1,6 @@
+{
+  "name": "Multiplayer Fish Arcade Game",
+  "description": "A professional, high-fidelity multiplayer Fish Arcade Game simulator with integrated Software Architecture Document (SAD), Technical Design Document (TDD), Admin Console, and real-time game economy analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
