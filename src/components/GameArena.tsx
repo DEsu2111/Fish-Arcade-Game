@@ -45,6 +45,32 @@ export default function GameArena({
   // Wave Rush event state
   const [waveRushTimer, setWaveRushTimer] = useState(0);
 
+  // Round system states
+  const [currentRound, setCurrentRound] = useState(1);
+  const [roundTimeLeft, setRoundTimeLeft] = useState(45);
+  const [bestRoundScore, setBestRoundScore] = useState(8500);
+  const [roundHistory, setRoundHistory] = useState<{ round: number; winnerName: string; winnerGain: number; color?: string }[]>([]);
+  const [roundStartCoins, setRoundStartCoins] = useState<number[]>([userBalance, 4500, 12000, 8500, 6000, 9500]);
+  const [roundWinnerAnnouncement, setRoundWinnerAnnouncement] = useState<{
+    round: number;
+    winnerName: string;
+    winnerGain: number;
+    show: boolean;
+  } | null>(null);
+
+  // Refs for high performance loop thread synchronization
+  const currentRoundRef = useRef(1);
+  const roundTimeLeftRef = useRef(45);
+  const bestRoundScoreRef = useRef(8500);
+  const roundWinnerAnnouncementRef = useRef<{
+    round: number;
+    winnerName: string;
+    winnerGain: number;
+    show: boolean;
+    timer: number;
+  } | null>(null);
+  const roundStartCoinsRef = useRef<number[]>([userBalance, 4500, 12000, 8500, 6000, 9500]);
+
   // Active weapon type for user
   const [activeWeapon, setActiveWeapon] = useState<WeaponType>(WeaponType.STANDARD);
 
@@ -293,6 +319,67 @@ export default function GameArena({
     let frameCount = 0;
     let shakeTimer = 0;
     let shakeIntensity = 0;
+
+    // Snapshot starting coins of players on mount
+    const startCoinsSnapshot = playersRef.current.map((p) => p.coins);
+    roundStartCoinsRef.current = startCoinsSnapshot;
+    setRoundStartCoins(startCoinsSnapshot);
+
+    function triggerRoundEnd() {
+      const currentCoins = playersRef.current.map((p) => p.coins);
+      const gains = currentCoins.map((coins, i) => {
+        const startCoins = roundStartCoinsRef.current[i] || 0;
+        return Math.max(0, coins - startCoins);
+      });
+
+      // Find winner with highest gain
+      let winnerIdx = 0;
+      let maxGain = 0;
+      for (let i = 0; i < gains.length; i++) {
+        if (gains[i] > maxGain) {
+          maxGain = gains[i];
+          winnerIdx = i;
+        }
+      }
+
+      const winnerPlayer = playersRef.current[winnerIdx];
+      const winnerName = winnerPlayer ? winnerPlayer.name : "Player 1 (You)";
+      const finalWinnerGain = maxGain > 0 ? maxGain : Math.floor(Math.random() * 1500 + 500);
+
+      const completedRound = currentRoundRef.current;
+
+      if (finalWinnerGain > bestRoundScoreRef.current) {
+        bestRoundScoreRef.current = finalWinnerGain;
+        setBestRoundScore(finalWinnerGain);
+        addLog("SYSTEM", `🎉 NEW ALL-TIME RECORD: ${winnerName} won $${finalWinnerGain.toLocaleString()} in Round ${completedRound}!`, "warning");
+      } else {
+        addLog("SYSTEM", `Round ${completedRound} Complete. Champion: ${winnerName} with $${finalWinnerGain.toLocaleString()} earnings.`, "info");
+      }
+
+      playSynthSound("capture");
+
+      const announcement = {
+        round: completedRound,
+        winnerName: winnerName,
+        winnerGain: finalWinnerGain,
+        show: true,
+        timer: 180, // 3 seconds at 60fps
+      };
+      roundWinnerAnnouncementRef.current = announcement;
+      setRoundWinnerAnnouncement(announcement);
+
+      setRoundHistory((prev) => [
+        ...prev,
+        { 
+          round: completedRound, 
+          winnerName: winnerName, 
+          winnerGain: finalWinnerGain,
+          color: winnerPlayer ? winnerPlayer.color : "#10b981"
+        },
+      ]);
+
+      fishRef.current = [];
+    }
 
     const triggerShake = (intensity: number, duration: number) => {
       shakeIntensity = intensity;
@@ -611,10 +698,57 @@ export default function GameArena({
       }
     }
 
+    let lastSecondTime = Date.now();
+
     // Main Engine Tick & Drawing
     const tick = () => {
       frameCount++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Handle active round transitions
+      if (roundWinnerAnnouncementRef.current && roundWinnerAnnouncementRef.current.show) {
+        roundWinnerAnnouncementRef.current.timer--;
+        if (roundWinnerAnnouncementRef.current.timer <= 0) {
+          const nextRound = currentRoundRef.current + 1;
+          currentRoundRef.current = nextRound;
+          setCurrentRound(nextRound);
+          
+          roundTimeLeftRef.current = 45;
+          setRoundTimeLeft(45);
+          
+          roundWinnerAnnouncementRef.current = null;
+          setRoundWinnerAnnouncement(null);
+
+          const snapshot = playersRef.current.map((p) => p.coins);
+          roundStartCoinsRef.current = snapshot;
+          setRoundStartCoins(snapshot);
+
+          addLog("SYSTEM", `🚀 Round ${nextRound} begins! Spawning new deep sea migration streams!`, "info");
+          playSynthSound("boss");
+        }
+      }
+
+      // Check for second transition
+      const now = Date.now();
+      if (now - lastSecondTime >= 1000) {
+        lastSecondTime = now;
+        
+        // Count down round timer if we are not currently transitioning
+        if (!roundWinnerAnnouncementRef.current || !roundWinnerAnnouncementRef.current.show) {
+          if (roundTimeLeftRef.current > 0) {
+            roundTimeLeftRef.current--;
+            setRoundTimeLeft(roundTimeLeftRef.current);
+            
+            if (roundTimeLeftRef.current <= 5 && roundTimeLeftRef.current > 0) {
+              playSynthSound("hit"); // slight tick beep
+            }
+
+            if (roundTimeLeftRef.current === 0) {
+              triggerRoundEnd();
+            }
+          }
+        }
+      }
 
       // Calculate screen-shake offsets
       let shakeX = 0;
@@ -682,11 +816,13 @@ export default function GameArena({
       }
 
       // Spawner interval management
-      spawnTimer += 1 * config.spawnRateModifier;
-      if (spawnTimer >= 100) {
-        spawnTimer = 0;
-        if (fishRef.current.length < 24) {
-          spawnFish(canvas.width, canvas.height);
+      if (!roundWinnerAnnouncementRef.current || !roundWinnerAnnouncementRef.current.show) {
+        spawnTimer += 1 * config.spawnRateModifier;
+        if (spawnTimer >= 100) {
+          spawnTimer = 0;
+          if (fishRef.current.length < 24) {
+            spawnFish(canvas.width, canvas.height);
+          }
         }
       }
 
@@ -1516,7 +1652,9 @@ export default function GameArena({
       bulletsRef.current = bulletsRef.current.filter((b) => b.bounces < 4);
 
       // 5. Bot behaviors
-      runBotsLogic(canvas.width, canvas.height);
+      if (!roundWinnerAnnouncementRef.current || !roundWinnerAnnouncementRef.current.show) {
+        runBotsLogic(canvas.width, canvas.height);
+      }
 
       // 6. Collision Matrix & Reward Algorithm (O(N) grid-based evaluation)
       bulletsRef.current.forEach((bullet) => {
@@ -1992,6 +2130,126 @@ export default function GameArena({
         });
       }
 
+      // 11. Draw Top-Center Round HUD Bar on Canvas
+      if (!roundWinnerAnnouncementRef.current || !roundWinnerAnnouncementRef.current.show) {
+        ctx.save();
+        ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.4)";
+        ctx.lineWidth = 1.5;
+        
+        const hudWidth = 270;
+        const hudHeight = 26;
+        const hx = canvas.width / 2 - hudWidth / 2;
+        const hy = 8;
+        
+        ctx.beginPath();
+        ctx.rect(hx, hy, hudWidth, hudHeight);
+        ctx.fill();
+        ctx.stroke();
+
+        // Round text
+        ctx.fillStyle = "#fbbf24";
+        ctx.font = "bold 10px monospace";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`ROUND ${currentRoundRef.current}`, hx + 10, hy + hudHeight / 2);
+
+        // Separator circle
+        ctx.fillStyle = "rgba(16, 185, 129, 0.4)";
+        ctx.beginPath();
+        ctx.arc(hx + 75, hy + hudHeight / 2, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Time Left
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillText(`TIME: ${roundTimeLeftRef.current}s`, hx + 85, hy + hudHeight / 2);
+
+        // Separator circle
+        ctx.fillStyle = "rgba(16, 185, 129, 0.4)";
+        ctx.beginPath();
+        ctx.arc(hx + 155, hy + hudHeight / 2, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Best Round Score (High Score target)
+        ctx.fillStyle = "#10b981";
+        ctx.fillText(`BEST RD: $${bestRoundScoreRef.current.toLocaleString()}`, hx + 165, hy + hudHeight / 2);
+
+        ctx.restore();
+      }
+
+      // 12. Draw Round Complete Announcement overlay on Canvas
+      if (roundWinnerAnnouncementRef.current && roundWinnerAnnouncementRef.current.show) {
+        const ann = roundWinnerAnnouncementRef.current;
+        ctx.save();
+        
+        // Dark translucent overlay
+        ctx.fillStyle = "rgba(2, 6, 23, 0.88)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Center card container
+        const cardW = Math.min(480, canvas.width - 40);
+        const cardH = 220;
+        const cx = canvas.width / 2 - cardW / 2;
+        const cy = canvas.height / 2 - cardH / 2;
+        
+        ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+        ctx.fillRect(cx, cy, cardW, cardH);
+        
+        ctx.strokeStyle = "#fbbf24";
+        ctx.lineWidth = 2 + Math.sin(frameCount * 0.1) * 1.0;
+        ctx.strokeRect(cx, cy, cardW, cardH);
+
+        // Trophy header
+        ctx.fillStyle = "#ef4444";
+        ctx.font = "bold 18px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`🏆 ROUND ${ann.round} COMPLETED 🏆`, canvas.width / 2, cy + 35);
+
+        // Golden divider line
+        ctx.strokeStyle = "rgba(251, 191, 36, 0.3)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx + 40, cy + 60);
+        ctx.lineTo(cx + cardW - 40, cy + 60);
+        ctx.stroke();
+
+        // Winner Subheader
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "bold 11px sans-serif";
+        ctx.fillText("ROUND HIGHEST COIN EARNER", canvas.width / 2, cy + 85);
+        
+        // Winner Name
+        ctx.fillStyle = "#fbbf24";
+        ctx.font = "black 22px sans-serif";
+        ctx.fillText(`${ann.winnerName}`, canvas.width / 2, cy + 115);
+
+        // Winner Coin Gain
+        ctx.fillStyle = "#10b981";
+        ctx.font = "bold 16px monospace";
+        ctx.fillText(`+$${ann.winnerGain.toLocaleString()} AUD`, canvas.width / 2, cy + 150);
+
+        // Countdown next round progress bar outline
+        const pbW = 200;
+        const pbH = 6;
+        const pbx = canvas.width / 2 - pbW / 2;
+        const pby = cy + 180;
+        
+        ctx.fillStyle = "rgba(51, 65, 85, 0.5)";
+        ctx.fillRect(pbx, pby, pbW, pbH);
+        
+        // Draw progress fill
+        const fillRatio = Math.max(0, ann.timer / 180);
+        ctx.fillStyle = "#38bdf8";
+        ctx.fillRect(pbx, pby, pbW * fillRatio, pbH);
+
+        ctx.fillStyle = "#64748b";
+        ctx.font = "9px sans-serif";
+        ctx.fillText(`PREPARING NEXT DEEP SEA MIGRATION...`, canvas.width / 2, cy + 202);
+
+        ctx.restore();
+      }
+
       ctx.restore(); // Balance the screen shake ctx.save() at the start of tick()
 
       animId = requestAnimationFrame(tick);
@@ -2007,6 +2265,11 @@ export default function GameArena({
 
   // Handle User Clicks to shoot bullet (Standard firing event)
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Prevent user clicks if a round transition overlay is currently active
+    if (roundWinnerAnnouncementRef.current && roundWinnerAnnouncementRef.current.show) {
+      return;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -2131,7 +2394,9 @@ export default function GameArena({
         </div>
       </div>
 
-      {isCabinetMode ? (
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
+        <div className="xl:col-span-3 flex flex-col gap-5">
+          {isCabinetMode ? (
         /* Immersive 3D/Flat Physical Arcade Table Cabinet View Mode */
         <div className="w-full flex flex-col items-center justify-center bg-slate-950/60 p-4 sm:p-6 border border-slate-900 rounded-2xl relative overflow-hidden shadow-2xl">
           
@@ -2707,6 +2972,175 @@ export default function GameArena({
           </div>
         </div>
       )}
+        </div>
+
+        {/* 🏆 TOURNAMENT ROUNDS LEDGER SIDEBAR */}
+        <div className="xl:col-span-1 h-full">
+          <div className="flex flex-col gap-4 bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg text-slate-100 select-none h-full">
+            
+            {/* Header */}
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+              <div className="p-1.5 bg-yellow-500/10 text-yellow-500 rounded-lg border border-yellow-500/20">
+                <Coins className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider text-slate-100">Rounds Ledger</h3>
+                <p className="text-[10px] text-slate-500 font-bold">Deep Sea Championship</p>
+              </div>
+            </div>
+
+            {/* Current Round Indicator Panel */}
+            <div className="bg-slate-950 border border-slate-850 p-3 rounded-lg flex flex-col gap-2.5 relative overflow-hidden">
+              {/* Animated pulsing light */}
+              <div className="absolute top-3 right-3 w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+              
+              <div>
+                <div className="text-[10px] uppercase font-bold text-slate-500">Current Arena Wave</div>
+                <div className="text-xl font-black text-yellow-500 tracking-tight font-mono">ROUND {currentRound}</div>
+              </div>
+
+              {/* Time Remaining Bar */}
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between text-[9px] uppercase font-bold text-slate-400">
+                  <span>Wave Active Time</span>
+                  <span className="font-mono text-slate-200">{roundTimeLeft}s</span>
+                </div>
+                <div className="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-850/60 p-px">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-1000 ${
+                      roundTimeLeft <= 10 
+                        ? "bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" 
+                        : "bg-emerald-500"
+                    }`}
+                    style={{ width: `${(roundTimeLeft / 45) * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* All-Time Round Record Target */}
+            <div className="bg-gradient-to-r from-yellow-500/10 via-amber-500/5 to-transparent border border-yellow-500/20 p-3 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">👑</span>
+                <div>
+                  <div className="text-[9px] uppercase font-black text-yellow-500">BEST RD RECORD</div>
+                  <div className="text-[10px] text-slate-400 font-bold">Target to smash:</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-black font-mono text-emerald-400">${bestRoundScore.toLocaleString()}</div>
+                <div className="text-[8px] font-mono text-slate-500">COINS WON</div>
+              </div>
+            </div>
+
+            {/* Live Round Rankings Leaderboard */}
+            <div className="flex flex-col gap-2">
+              <div className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Live Round Leaderboard</div>
+              <div className="bg-slate-950 border border-slate-850 rounded-lg p-2 flex flex-col gap-1.5">
+                {(() => {
+                  // Compute live round gains on the fly for all 6 players
+                  const playersData = [
+                    {
+                      name: "Player 1 (You)",
+                      gain: hudStats.coins - roundStartCoins[0],
+                      color: "#10b981",
+                      isUser: true
+                    },
+                    {
+                      name: hudStats.botNames[0] || "MegaHunter_Bot",
+                      gain: hudStats.botCoins[0] - roundStartCoins[1],
+                      color: "#3b82f6",
+                      isUser: false
+                    },
+                    {
+                      name: hudStats.botNames[1] || "Cabinet_Seat_3",
+                      gain: hudStats.botCoins[1] - roundStartCoins[2],
+                      color: "#eab308",
+                      isUser: false
+                    },
+                    {
+                      name: hudStats.botNames[2] || "VIP_OceanLord",
+                      gain: hudStats.botCoins[2] - roundStartCoins[3],
+                      color: "#a855f7",
+                      isUser: false
+                    },
+                    {
+                      name: hudStats.botNames[3] || "NeonSlayer",
+                      gain: hudStats.botCoins[3] - roundStartCoins[4],
+                      color: "#ec4899",
+                      isUser: false
+                    },
+                    {
+                      name: hudStats.botNames[4] || "Apex_Predator",
+                      gain: hudStats.botCoins[4] - roundStartCoins[5],
+                      color: "#06b6d4",
+                      isUser: false
+                    }
+                  ];
+
+                  // Sort descending by gain
+                  playersData.sort((a, b) => b.gain - a.gain);
+
+                  return playersData.map((p, idx) => {
+                    const colors = ["#fbbf24", "#94a3b8", "#b45309", "#475569", "#475569", "#475569"];
+                    const placeColor = colors[idx] || "#475569";
+                    return (
+                      <div key={p.name} className={`flex items-center justify-between p-1.5 rounded text-xs transition-all ${p.isUser ? "bg-emerald-500/10 border border-emerald-500/20" : "hover:bg-slate-900/50"}`}>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {/* Rank bubble */}
+                          <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black font-mono text-white" style={{ backgroundColor: placeColor }}>
+                            {idx + 1}
+                          </span>
+                          {/* Color dot */}
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                          <span className={`truncate font-bold ${p.isUser ? "text-emerald-400 font-extrabold" : "text-slate-300"}`}>
+                            {p.name}
+                          </span>
+                        </div>
+                        <div className="font-mono text-right shrink-0">
+                          <span className={`font-bold ${p.gain > 0 ? "text-emerald-400" : p.gain === 0 ? "text-slate-500" : "text-red-400"}`}>
+                            {p.gain > 0 ? `+$${p.gain.toLocaleString()}` : p.gain === 0 ? "$0" : `-$${Math.abs(p.gain).toLocaleString()}`}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+
+            {/* Previous Completed Rounds Championship History */}
+            <div className="flex flex-col gap-2 mt-2">
+              <div className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex justify-between items-center">
+                <span>Round Winner Log</span>
+                <span className="text-[8px] font-bold text-slate-500 font-mono">HISTORY</span>
+              </div>
+              
+              <div className="bg-slate-950 border border-slate-850 rounded-lg p-2.5 max-h-[160px] overflow-y-auto flex flex-col gap-2 custom-scrollbar">
+                {roundHistory.length === 0 ? (
+                  <div className="text-center py-6 text-slate-600 text-[10px] font-bold uppercase tracking-wider italic">
+                    Waiting for Round 1 to clear...
+                  </div>
+                ) : (
+                  [...roundHistory].reverse().map((hist, i) => (
+                    <div key={`h-${hist.round}-${i}`} className="flex items-center justify-between border-b border-slate-900 pb-1.5 last:border-0 last:pb-0 text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-mono text-[9px] text-yellow-500 font-black shrink-0">WAVE {hist.round}</span>
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: hist.color || "#10b981" }} />
+                        <span className="truncate font-bold text-slate-300">{hist.winnerName}</span>
+                      </div>
+                      <div className="font-mono text-emerald-400 font-bold shrink-0 text-right">
+                        +${hist.winnerGain.toLocaleString()}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
