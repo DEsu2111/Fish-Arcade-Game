@@ -56,7 +56,14 @@ export default function GameArena({
     winnerName: string;
     winnerGain: number;
     show: boolean;
-  } | null>(null);
+    isInitial?: boolean;
+  } | null>({
+    round: 1,
+    winnerName: "",
+    winnerGain: 0,
+    show: true,
+    isInitial: true
+  });
 
   // Refs for high performance loop thread synchronization
   const currentRoundRef = useRef(1);
@@ -68,7 +75,15 @@ export default function GameArena({
     winnerGain: number;
     show: boolean;
     timer: number;
-  } | null>(null);
+    isInitial?: boolean;
+  } | null>({
+    round: 1,
+    winnerName: "",
+    winnerGain: 0,
+    show: true,
+    timer: 999999,
+    isInitial: true
+  });
   const roundStartCoinsRef = useRef<number[]>([userBalance, 4500, 12000, 8500, 6000, 9500]);
 
   // Active weapon type for user
@@ -363,7 +378,8 @@ export default function GameArena({
         winnerName: winnerName,
         winnerGain: finalWinnerGain,
         show: true,
-        timer: 180, // 3 seconds at 60fps
+        timer: 999999, // manual action required
+        isInitial: false
       };
       roundWinnerAnnouncementRef.current = announcement;
       setRoundWinnerAnnouncement(announcement);
@@ -705,27 +721,9 @@ export default function GameArena({
       frameCount++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Handle active round transitions
+      // Handle active round transitions (none in engine loop, manual start required)
       if (roundWinnerAnnouncementRef.current && roundWinnerAnnouncementRef.current.show) {
-        roundWinnerAnnouncementRef.current.timer--;
-        if (roundWinnerAnnouncementRef.current.timer <= 0) {
-          const nextRound = currentRoundRef.current + 1;
-          currentRoundRef.current = nextRound;
-          setCurrentRound(nextRound);
-          
-          roundTimeLeftRef.current = 45;
-          setRoundTimeLeft(45);
-          
-          roundWinnerAnnouncementRef.current = null;
-          setRoundWinnerAnnouncement(null);
-
-          const snapshot = playersRef.current.map((p) => p.coins);
-          roundStartCoinsRef.current = snapshot;
-          setRoundStartCoins(snapshot);
-
-          addLog("SYSTEM", `🚀 Round ${nextRound} begins! Spawning new deep sea migration streams!`, "info");
-          playSynthSound("boss");
-        }
+        // Dormant waiting for manual startNextRound action
       }
 
       // Check for second transition
@@ -2177,78 +2175,7 @@ export default function GameArena({
         ctx.restore();
       }
 
-      // 12. Draw Round Complete Announcement overlay on Canvas
-      if (roundWinnerAnnouncementRef.current && roundWinnerAnnouncementRef.current.show) {
-        const ann = roundWinnerAnnouncementRef.current;
-        ctx.save();
-        
-        // Dark translucent overlay
-        ctx.fillStyle = "rgba(2, 6, 23, 0.88)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Center card container
-        const cardW = Math.min(480, canvas.width - 40);
-        const cardH = 220;
-        const cx = canvas.width / 2 - cardW / 2;
-        const cy = canvas.height / 2 - cardH / 2;
-        
-        ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
-        ctx.fillRect(cx, cy, cardW, cardH);
-        
-        ctx.strokeStyle = "#fbbf24";
-        ctx.lineWidth = 2 + Math.sin(frameCount * 0.1) * 1.0;
-        ctx.strokeRect(cx, cy, cardW, cardH);
-
-        // Trophy header
-        ctx.fillStyle = "#ef4444";
-        ctx.font = "bold 18px sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(`🏆 ROUND ${ann.round} COMPLETED 🏆`, canvas.width / 2, cy + 35);
-
-        // Golden divider line
-        ctx.strokeStyle = "rgba(251, 191, 36, 0.3)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(cx + 40, cy + 60);
-        ctx.lineTo(cx + cardW - 40, cy + 60);
-        ctx.stroke();
-
-        // Winner Subheader
-        ctx.fillStyle = "#94a3b8";
-        ctx.font = "bold 11px sans-serif";
-        ctx.fillText("ROUND HIGHEST COIN EARNER", canvas.width / 2, cy + 85);
-        
-        // Winner Name
-        ctx.fillStyle = "#fbbf24";
-        ctx.font = "black 22px sans-serif";
-        ctx.fillText(`${ann.winnerName}`, canvas.width / 2, cy + 115);
-
-        // Winner Coin Gain
-        ctx.fillStyle = "#10b981";
-        ctx.font = "bold 16px monospace";
-        ctx.fillText(`+$${ann.winnerGain.toLocaleString()} AUD`, canvas.width / 2, cy + 150);
-
-        // Countdown next round progress bar outline
-        const pbW = 200;
-        const pbH = 6;
-        const pbx = canvas.width / 2 - pbW / 2;
-        const pby = cy + 180;
-        
-        ctx.fillStyle = "rgba(51, 65, 85, 0.5)";
-        ctx.fillRect(pbx, pby, pbW, pbH);
-        
-        // Draw progress fill
-        const fillRatio = Math.max(0, ann.timer / 180);
-        ctx.fillStyle = "#38bdf8";
-        ctx.fillRect(pbx, pby, pbW * fillRatio, pbH);
-
-        ctx.fillStyle = "#64748b";
-        ctx.font = "9px sans-serif";
-        ctx.fillText(`PREPARING NEXT DEEP SEA MIGRATION...`, canvas.width / 2, cy + 202);
-
-        ctx.restore();
-      }
+      // 12. Draw Round Complete Announcement overlay (Handled by React HTML Overlay for manual interaction)
 
       ctx.restore(); // Balance the screen shake ctx.save() at the start of tick()
 
@@ -2262,6 +2189,31 @@ export default function GameArena({
       resizeObserver.disconnect();
     };
   }, [config.spawnRateModifier, soundEnabled]);
+
+  // Manually start the next round or the game's initial round
+  const handleStartRound = () => {
+    if (roundWinnerAnnouncementRef.current && roundWinnerAnnouncementRef.current.show) {
+      const isInitial = roundWinnerAnnouncementRef.current.isInitial;
+      const nextRound = isInitial ? 1 : currentRoundRef.current + 1;
+      
+      currentRoundRef.current = nextRound;
+      setCurrentRound(nextRound);
+      
+      roundTimeLeftRef.current = 45;
+      setRoundTimeLeft(45);
+      
+      roundWinnerAnnouncementRef.current = null;
+      setRoundWinnerAnnouncement(null);
+
+      // Snapshot starting coins of players on start of round
+      const snapshot = playersRef.current.map((p) => p.coins);
+      roundStartCoinsRef.current = snapshot;
+      setRoundStartCoins(snapshot);
+
+      addLog("SYSTEM", `🚀 Round ${nextRound} manually started by Player! Deep sea migration stream loaded.`, "info");
+      playSynthSound("boss");
+    }
+  };
 
   // Handle User Clicks to shoot bullet (Standard firing event)
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -2624,6 +2576,43 @@ export default function GameArena({
                 <div className="absolute bottom-3 right-3 bg-slate-900/80 px-2 py-1 rounded text-[8px] font-bold text-slate-400 pointer-events-none select-none">
                   Click Screen viewport to aim & fire bullets
                 </div>
+
+                {/* 🏁 Round Start / Transition Overlay */}
+                {roundWinnerAnnouncement?.show && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-[2px] z-30 select-none">
+                    <div className="bg-slate-900/95 border-2 border-yellow-500 rounded-xl p-5 max-w-sm w-11/12 text-center shadow-2xl animate-fade-in flex flex-col items-center">
+                      <div className="text-3xl mb-1 animate-bounce">
+                        {roundWinnerAnnouncement.isInitial ? "⚓" : "🏆"}
+                      </div>
+                      <h4 className="text-xs font-black text-yellow-400 uppercase tracking-widest mb-1 font-mono">
+                        {roundWinnerAnnouncement.isInitial ? "Deep Sea Arena Ready" : `Round ${roundWinnerAnnouncement.round} Cleared`}
+                      </h4>
+                      
+                      {!roundWinnerAnnouncement.isInitial ? (
+                        <div className="mb-3">
+                          <p className="text-[9px] text-slate-400 uppercase font-bold">Highest Coin Earner</p>
+                          <p className="text-base font-black text-slate-100">{roundWinnerAnnouncement.winnerName}</p>
+                          <p className="text-xs font-mono text-emerald-400 font-bold">
+                            +${roundWinnerAnnouncement.winnerGain.toLocaleString()} AUD
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mb-3">
+                          <p className="text-[10px] text-slate-300 px-3 leading-relaxed">
+                            Prepare your cannons! Five elite ocean hunters are ready to compete in the deep sea migration stream.
+                          </p>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={handleStartRound}
+                        className="w-full py-2 px-4 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 text-xs font-black uppercase tracking-widest rounded-lg shadow-[0_0_12px_rgba(234,179,8,0.2)] transition-all hover:scale-[1.02] active:scale-[0.98] border border-yellow-300 cursor-pointer"
+                      >
+                        {roundWinnerAnnouncement.isInitial ? "Start Round 1" : `Begin Round ${roundWinnerAnnouncement.round + 1}`}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2969,6 +2958,43 @@ export default function GameArena({
                 </button>
               ))}
             </div>
+
+            {/* 🏁 Round Start / Transition Overlay */}
+            {roundWinnerAnnouncement?.show && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-[2px] z-30 select-none">
+                <div className="bg-slate-900/95 border-2 border-yellow-500 rounded-xl p-5 max-w-sm w-11/12 text-center shadow-2xl animate-fade-in flex flex-col items-center">
+                  <div className="text-3xl mb-1 animate-bounce">
+                    {roundWinnerAnnouncement.isInitial ? "⚓" : "🏆"}
+                  </div>
+                  <h4 className="text-xs font-black text-yellow-400 uppercase tracking-widest mb-1 font-mono">
+                    {roundWinnerAnnouncement.isInitial ? "Deep Sea Arena Ready" : `Round ${roundWinnerAnnouncement.round} Cleared`}
+                  </h4>
+                  
+                  {!roundWinnerAnnouncement.isInitial ? (
+                    <div className="mb-3">
+                      <p className="text-[9px] text-slate-400 uppercase font-bold">Highest Coin Earner</p>
+                      <p className="text-base font-black text-slate-100">{roundWinnerAnnouncement.winnerName}</p>
+                      <p className="text-xs font-mono text-emerald-400 font-bold">
+                        +${roundWinnerAnnouncement.winnerGain.toLocaleString()} AUD
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mb-3">
+                      <p className="text-[10px] text-slate-300 px-3 leading-relaxed">
+                        Prepare your cannons! Five elite ocean hunters are ready to compete in the deep sea migration stream.
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleStartRound}
+                    className="w-full py-2 px-4 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 text-xs font-black uppercase tracking-widest rounded-lg shadow-[0_0_12px_rgba(234,179,8,0.2)] transition-all hover:scale-[1.02] active:scale-[0.98] border border-yellow-300 cursor-pointer"
+                  >
+                    {roundWinnerAnnouncement.isInitial ? "Start Round 1" : `Begin Round ${roundWinnerAnnouncement.round + 1}`}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
