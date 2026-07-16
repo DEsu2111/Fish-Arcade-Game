@@ -39,7 +39,26 @@ Below is the complete file layout of the platform, along with explanations of th
 
 ---
 
-## 2. Maintenance & Operations Runbook
+## 2. Production Technology Stack & Technical Justifications
+
+The DeepSea King platform is built using a modern, high-performance web tech stack. Each technology was selected specifically to meet the strict demands of real-time multiplayer gaming, complex math calculations, and financial-grade ledger security:
+
+### 2.1 Core Development Frameworks
+*   **TypeScript (v5.x)**: Used for strict type safety. In a system where mathematical equations dictate progressive jackpots and real money balance audits, type errors can lead to game exploits or critical financial discrepancies. TypeScript ensures that all data payloads, anti-cheat structures, and player profiles are rigidly validated at compile-time.
+*   **React (v18+) & HTML5 Canvas**: The interface uses a decoupled architecture. React manages administrative states, operator dials, and specifications with high-level declarative components, while the game engine is powered by an independent, double-buffered **HTML5 Canvas loop** driven by `requestAnimationFrame`. This combination avoids DOM-repaint lag, keeping the game at a locked **60FPS** while preserving modern reactive state-management for metrics.
+*   **Vite**: The build system uses Vite to enable ultra-fast Hot Module Replacement (HMR) during developer iterations and highly optimized code splitting/tree-shaking for production deployment bundles.
+
+### 2.2 Visuals, Icons, & Design System
+*   **Tailwind CSS (v4.0)**: Guarantees modular, robust UI styling with zero runtime CSS overhead. It ensures that the admin screens, analytics, and game dashboards render flawlessly across high-density mobile screens, desktop monitors, and land-based physical arcade cabinet displays.
+*   **Lucide React**: Integrated for crisp, vector-based, high-DPI system icons that remain completely responsive without the overhead of heavy custom graphic assets.
+*   **Framer Motion (`motion/react`)**: Powering interactive tab transitions, slide-outs, and HUD animations to deliver an enterprise-grade operator and player user experience.
+
+### 2.3 Mathematical Data Visualization
+*   **Recharts & D3.js**: High-efficiency charting libraries are used to translate millions of lines of financial logs and capture events into human-readable real-time charts (such as RTP tracking and progressive jackpot pool accumulation trends), enabling operators to monitor risk-management metrics at a glance.
+
+---
+
+## 3. Maintenance & Operations Runbook
 
 This section contains technical guidelines for developers, math designers, and security engineers to maintain and calibrate the platform during live operations.
 
@@ -98,7 +117,7 @@ To add a new path mapping:
 
 ---
 
-## 3. High-Performance Deployment Specifications
+## 4. High-Performance Deployment Specifications
 
 To maintain a consistent **60FPS rendering performance** during heavy wave invasions with thousands of concurrent bullets, verify that the following optimizations remain active:
 
@@ -108,7 +127,7 @@ To maintain a consistent **60FPS rendering performance** during heavy wave invas
 
 ---
 
-## 4. Operational Commands & Maintenance
+## 5. Operational Commands & Maintenance
 
 ### 1. Install Dependencies
 ```bash
