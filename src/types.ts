@@ -94,7 +94,8 @@ export interface GameParticle {
   size: number;
   life: number;
   maxLife: number;
-  type: "bubble" | "coin" | "spark" | "hit" | "explosion" | "laser" | "shield";
+  type: "bubble" | "coin" | "spark" | "hit" | "explosion" | "laser" | "shield" | "text";
+  text?: string;
 }
 
 export interface AuditLog {

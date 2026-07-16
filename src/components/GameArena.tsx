@@ -126,6 +126,7 @@ export default function GameArena({
   const bulletsRef = useRef<Bullet[]>([]);
   const fishRef = useRef<Fish[]>([]);
   const particlesRef = useRef<GameParticle[]>([]);
+  const botTargetsRef = useRef<{ [key: string]: string }>({});
 
   // Track target endpoints to draw laser guides or assist locking
   const [mousePos, setMousePos] = useState({ x: 400, y: 300 });
@@ -254,6 +255,13 @@ export default function GameArena({
     let animId: number;
     let spawnTimer = 0;
     let frameCount = 0;
+    let shakeTimer = 0;
+    let shakeIntensity = 0;
+
+    const triggerShake = (intensity: number, duration: number) => {
+      shakeIntensity = intensity;
+      shakeTimer = duration;
+    };
 
     // Handle initial sizing
     const handleResize = () => {
@@ -274,17 +282,21 @@ export default function GameArena({
     // Spawn fish logic
     function spawnFish(width: number, height: number, forceBoss = false) {
       const types = [
-        { type: "clownfish", name: "Clownfish", size: 30, hp: 5, value: 2, speed: 1.5, color: "#f97316" }, // Orange
-        { type: "goldfish", name: "Goldfish", size: 24, hp: 3, value: 3, speed: 2.0, color: "#eab308" }, // Yellow
-        { type: "jellyfish", name: "Luminous Jellyfish", size: 40, hp: 12, value: 8, speed: 0.8, color: "#a855f7" }, // Purple
-        { type: "swordfish", name: "Razor Swordfish", size: 55, hp: 20, value: 15, speed: 2.5, color: "#06b6d4" }, // Cyan
-        { type: "shark", name: "Steel Shark", size: 80, hp: 60, value: 50, speed: 1.2, color: "#64748b" }, // Slate Gray
-        { type: "toad", name: "Golden Toad", size: 90, hp: 150, value: 120, speed: 1.0, color: "#f59e0b" }, // Amber Gold
+        { type: "clownfish", name: "Vibrant Coral Clownfish", size: 48, hp: 8, value: 2, speed: 1.3, color: "#f97316" }, // Orange-White banded
+        { type: "goldfish", name: "Glittering Amber Goldfish", size: 38, hp: 6, value: 3, speed: 1.8, color: "#f59e0b" }, // Golden Gradient
+        { type: "tang", name: "Royal Sapphire Tang", size: 52, hp: 15, value: 8, speed: 1.6, color: "#2563eb" }, // Blue-Yellow Sapphire
+        { type: "firefish", name: "Vibrant Neon Ruby Firefish", size: 56, hp: 20, value: 12, speed: 2.1, color: "#db2777" }, // Deep Hot Pink/Red
+        { type: "jellyfish", name: "Luminous Nebula Jellyfish", size: 64, hp: 30, value: 15, speed: 0.7, color: "#a855f7" }, // Pulsing Violet/Indigo
+        { type: "puffer", name: "Neon Glowing Emerald Puffer", size: 58, hp: 25, value: 10, speed: 0.9, color: "#10b981" }, // Spiky Neon Green
+        { type: "swordfish", name: "Razor Neon Swordfish", size: 84, hp: 50, value: 30, speed: 2.4, color: "#06b6d4" }, // Metallic Cyan-Silver
+        { type: "shark", name: "Cybersteel Overlord Shark", size: 115, hp: 140, value: 80, speed: 1.1, color: "#475569" }, // Sleek Slate-Azure
+        { type: "toad", name: "Golden Mythical Fortune Toad", size: 130, hp: 300, value: 200, speed: 0.9, color: "#fbbf24" }, // Golden Amber with coin
+        { type: "sunfish", name: "Cosmic Rainbow Sunfish", size: 150, hp: 450, value: 350, speed: 0.5, color: "#ec4899" }, // Rainbow horizontal gradient
       ];
 
       const bossTypes = [
-        { type: "kraken", name: "DEEP SEA KRAKEN BOSS", size: 160, hp: 800, value: 400, speed: 0.5, color: "#ec4899" }, // Hot Pink
-        { type: "dragon", name: "GOLDEN DRAGON KING BOSS", size: 200, hp: 1500, value: 800, speed: 0.4, color: "#f59e0b" }, // Gold
+        { type: "kraken", name: "DEEP SEA KRAKEN BOSS [x500]", size: 240, hp: 1200, value: 500, speed: 0.4, color: "#f43f5e" }, // Hot Rose Red
+        { type: "dragon", name: "GOLDEN DRAGON KING BOSS [x1000]", size: 310, hp: 2500, value: 1000, speed: 0.35, color: "#fbbf24" }, // Pure Gold Serpentine
       ];
 
       const isBoss = forceBoss || (Math.random() < 0.015 && fishRef.current.filter((f) => f.isBoss).length === 0);
@@ -349,20 +361,13 @@ export default function GameArena({
         }
 
         // Check if bot wallet is empty, recharge
-        if (player.coins < 50) {
-          player.coins += 2000;
-          addLog("ECONOMY", `Regulating Bot liquidity: [${player.name}] wallet automatically replenished +2000 coins.`, "info");
-        }
-
-        // Randomly upgrade cannon
-        if (Math.random() < 0.002) {
-          const bets = [10, 20, 50, 100];
-          player.gunLevel = bets[Math.floor(Math.random() * bets.length)];
-          addLog("SYSTEM", `Bot [${player.name}] upgraded cannon bet level to: ${player.gunLevel} coins.`, "info");
+        if (player.coins < 100) {
+          player.coins += 2500;
+          addLog("ECONOMY", `Regulating Bot liquidity: [${player.name}] wallet automatically replenished +2500 coins.`, "info");
         }
 
         // Randomly send emotes
-        if (Math.random() < 0.002 && !player.lastEmote) {
+        if (Math.random() < 0.001 && !player.lastEmote) {
           const emotes = ["🔥", "👑", "🎯", "🍀", "GG", "💎", "💪"];
           player.lastEmote = emotes[Math.floor(Math.random() * emotes.length)];
           player.emoteTimer = 90;
@@ -370,18 +375,60 @@ export default function GameArena({
 
         // Rotate Cannon towards some active fish
         if (fishRef.current.length > 0) {
-          // Prefer targeting bosses
-          const targetBoss = fishRef.current.find((f) => f.isBoss && !f.isDying);
-          const target = targetBoss || fishRef.current[Math.floor(Math.random() * fishRef.current.length)];
+          let target: Fish | undefined;
 
-          if (target && !target.isDying) {
+          // Intelligently select target based on Bot personality index:
+          if (idx === 1) {
+            // Bot 1: "Boss Hunter" - Targets highest HP / highest value
+            const bosses = fishRef.current.filter((f) => f.isBoss && !f.isDying);
+            if (bosses.length > 0) {
+              target = bosses[0];
+            } else {
+              // target highest score value fish
+              target = fishRef.current.reduce((max, current) => 
+                (!current.isDying && current.scoreValue > max.scoreValue) ? current : max
+              , fishRef.current[0]);
+            }
+            // Higher bet level for boss hunter
+            player.gunLevel = bosses.length > 0 ? 100 : 50;
+            player.weaponType = bosses.length > 0 ? WeaponType.LASER : WeaponType.STANDARD;
+          } 
+          else if (idx === 2) {
+            // Bot 2: "Kill Stealer" - Targets the active fish with the lowest HP
+            const activeFish = fishRef.current.filter((f) => !f.isDying);
+            if (activeFish.length > 0) {
+              target = activeFish.reduce((min, current) => 
+                (current.hp < min.hp) ? current : min
+              , activeFish[0]);
+            }
+            player.gunLevel = 20;
+            player.weaponType = WeaponType.DRILL;
+          } 
+          else {
+            // Bot 3: "VIP Ocean Lord / Tactician" - Targets special freeze/bomb, or closest fish
+            const specials = fishRef.current.filter((f) => f.specialTrigger && !f.isDying);
+            if (specials.length > 0) {
+              target = specials[0];
+            } else {
+              target = fishRef.current.find((f) => !f.isDying);
+            }
+            player.gunLevel = 30;
+            player.weaponType = WeaponType.STANDARD;
+          }
+
+          // Clear target if dying
+          if (target && target.isDying) {
+            target = undefined;
+          }
+
+          if (target) {
+            // Store target ID for the laser sight line render
+            botTargetsRef.current[player.id] = target.id;
+
             let canonX = 0;
             let canonY = 0;
 
             // Anchor locations for seats:
-            // Bot 1 (idx 1): Bottom-Right (width - 150, height)
-            // Bot 2 (idx 2): Top-Left (150, 0)
-            // Bot 3 (idx 3): Top-Right (width - 150, 0)
             if (idx === 1) {
               canonX = width - 150;
               canonY = height - 20;
@@ -397,11 +444,16 @@ export default function GameArena({
             const dy = target.y - canonY;
             const targetAngle = Math.atan2(dy, dx);
 
-            // Interpolate rotation smoothly
-            player.angle += (targetAngle - player.angle) * 0.15;
+            // Interpolate rotation smoothly (faster for kill-stealer)
+            const rotSpeed = idx === 2 ? 0.25 : 0.15;
+            player.angle += (targetAngle - player.angle) * rotSpeed;
 
-            // Fire bullet with probability based on active fish count
-            if (Math.random() < 0.08) {
+            // Fire bullet with random chance
+            let fireChance = 0.08;
+            if (target.isBoss) fireChance = 0.14; // fire faster at bosses!
+            if (idx === 2 && target.hp < 25) fireChance = 0.22; // spam fires if close to stealing kill!
+
+            if (Math.random() < fireChance) {
               const bId = `b_bot_${idx}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
               const bSpeed = 8;
               const vx = Math.cos(player.angle) * bSpeed;
@@ -435,17 +487,37 @@ export default function GameArena({
 
               bulletsRef.current.push(bullet);
               if (soundEnabled && idx === 1 && Math.random() < 0.2) {
-                // only play select audio for bottom bot to avoid clutter
                 playSynthSound("shoot");
               }
             }
+          } else {
+            botTargetsRef.current[player.id] = "";
           }
+        } else {
+          botTargetsRef.current[player.id] = "";
         }
       });
     }
 
     // Particle Burst spawner
-    function createParticles(x: number, y: number, color: string, count: number, type: GameParticle["type"]) {
+    function createParticles(x: number, y: number, color: string, count: number, type: GameParticle["type"], text?: string) {
+      if (type === "text" && text) {
+        particlesRef.current.push({
+          id: `p_txt_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+          x: x,
+          y: y - 10,
+          vx: (Math.random() - 0.5) * 0.8,
+          vy: -1.6, // float up speed
+          color: color,
+          size: 14,
+          life: 0,
+          maxLife: 60,
+          type: "text",
+          text: text,
+        });
+        return;
+      }
+
       for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
         const speed = Math.random() * 4 + 1;
@@ -469,12 +541,48 @@ export default function GameArena({
       frameCount++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      // Calculate screen-shake offsets
+      let shakeX = 0;
+      let shakeY = 0;
+      if (shakeTimer > 0) {
+        shakeTimer--;
+        shakeX = (Math.random() - 0.5) * shakeIntensity;
+        shakeY = (Math.random() - 0.5) * shakeIntensity;
+      }
+
+      ctx.save();
+      ctx.translate(shakeX, shakeY);
+
       // 1. Draw Deep Sea Ambient Background
       const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
       grad.addColorStop(0, "#082f49"); // Deep Slate Blue
       grad.addColorStop(1, "#020617"); // Dark Midnight Blue
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Undersea Shimmering God Rays (Light Rays)
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      for (let i = 0; i < 4; i++) {
+        const angle = Math.sin(frameCount * 0.007 + i * 1.6) * 0.12;
+        const rayWidth = 95 + Math.sin(frameCount * 0.015 + i) * 25;
+        const startX = (canvas.width / 5) * (i + 1) + Math.cos(frameCount * 0.008 + i) * 50;
+
+        const rayGrad = ctx.createLinearGradient(startX, 0, startX + Math.sin(angle) * canvas.height, canvas.height);
+        rayGrad.addColorStop(0, "rgba(56, 189, 248, 0.12)"); // sky blue neon tint
+        rayGrad.addColorStop(0.5, "rgba(16, 185, 129, 0.04)"); // subtle emerald tint
+        rayGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+        ctx.fillStyle = rayGrad;
+        ctx.beginPath();
+        ctx.moveTo(startX - rayWidth / 2, 0);
+        ctx.lineTo(startX + rayWidth / 2, 0);
+        ctx.lineTo(startX + Math.sin(angle) * canvas.height + rayWidth, canvas.height);
+        ctx.lineTo(startX + Math.sin(angle) * canvas.height - rayWidth, canvas.height);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
 
       // Background decorative ripples or grids
       ctx.strokeStyle = "rgba(16, 185, 129, 0.03)";
@@ -571,53 +679,620 @@ export default function GameArena({
         ctx.shadowColor = fish.color;
 
         // Custom designs per species
-        if (fish.isBoss) {
-          // Boss Ring Guard Glow
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(0, 0, fish.width * 0.6, 0, Math.PI * 2);
-          ctx.stroke();
-
-          // Core Glowing Orb
-          const radGrad = ctx.createRadialGradient(0, 0, 5, 0, 0, fish.width * 0.5);
-          radGrad.addColorStop(0, "#ffffff");
-          radGrad.addColorStop(0.3, fish.color);
-          radGrad.addColorStop(1, "rgba(2, 6, 23, 0.2)");
-          ctx.fillStyle = radGrad;
-          ctx.beginPath();
-          ctx.arc(0, 0, fish.width * 0.5, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Crown on top of boss
-          ctx.fillStyle = "#fbbf24"; // Gold Crown
-          ctx.beginPath();
-          ctx.moveTo(-15, -fish.height * 0.9);
-          ctx.lineTo(-25, -fish.height * 1.4);
-          ctx.lineTo(-8, -fish.height * 1.1);
-          ctx.lineTo(0, -fish.height * 1.6);
-          ctx.lineTo(8, -fish.height * 1.1);
-          ctx.lineTo(25, -fish.height * 1.4);
-          ctx.lineTo(15, -fish.height * 0.9);
-          ctx.closePath();
-          ctx.fill();
-        } else if (fish.type === "toad") {
-          // Chubby amphibian body
+        if (fish.type === "clownfish") {
+          // 1. Clownfish: Bright orange with distinctive vertical white/black stripes
           ctx.fillStyle = fish.color;
           ctx.beginPath();
-          ctx.ellipse(0, 0, fish.width * 0.5, fish.height * 0.8, 0, 0, Math.PI * 2);
+          ctx.ellipse(0, 0, fish.width * 0.5, fish.height * 0.5, 0, 0, Math.PI * 2);
           ctx.fill();
 
-          // Golden Coin on back
-          ctx.fillStyle = "#f59e0b";
+          // Draw White stripes with black borders
+          ctx.fillStyle = "#ffffff";
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 1.5;
+
+          // Stripe 1 (Middle)
+          ctx.beginPath();
+          ctx.ellipse(-fish.width * 0.05, 0, fish.width * 0.08, fish.height * 0.48, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Stripe 2 (Rear)
+          ctx.beginPath();
+          ctx.ellipse(-fish.width * 0.25, 0, fish.width * 0.06, fish.height * 0.35, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Waving Tail Fin
+          ctx.save();
+          const tailWave = Math.sin(fish.pathTime * 8) * 0.12;
+          ctx.rotate(tailWave);
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.45, 0);
+          ctx.lineTo(-fish.width * 0.75, -fish.height * 0.35);
+          ctx.quadraticCurveTo(-fish.width * 0.6, 0, -fish.width * 0.75, fish.height * 0.35);
+          ctx.closePath();
+          ctx.fillStyle = fish.color;
+          ctx.fill();
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.restore();
+
+          // Fins on top/bottom
+          ctx.fillStyle = fish.color;
+          ctx.beginPath();
+          ctx.ellipse(0, -fish.height * 0.45, fish.width * 0.15, fish.height * 0.12, Math.PI / 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Big Cute Eye
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.25, -fish.height * 0.12, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#000000";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.28, -fish.height * 0.12, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+
+        } else if (fish.type === "goldfish") {
+          // 2. Goldfish: Shimmering amber golden gradient, double flowing tail
+          const grad = ctx.createLinearGradient(-fish.width * 0.5, 0, fish.width * 0.5, 0);
+          grad.addColorStop(0, "#fb923c"); // Orange-light
+          grad.addColorStop(0.5, "#f59e0b"); // Golden
+          grad.addColorStop(1, "#fbbf24"); // Yellow gold
+          ctx.fillStyle = grad;
+
+          ctx.beginPath();
+          ctx.ellipse(0, 0, fish.width * 0.5, fish.height * 0.55, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Waving flowing double-tail
+          ctx.save();
+          const tWave1 = Math.sin(fish.pathTime * 6) * 12;
+          const tWave2 = Math.cos(fish.pathTime * 6) * 10;
+          ctx.fillStyle = "rgba(251, 146, 60, 0.65)";
+          
+          // Tail 1
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.45, -5);
+          ctx.quadraticCurveTo(-fish.width * 0.7, -fish.height * 0.6 + tWave1, -fish.width * 0.9, -fish.height * 0.5 + tWave1);
+          ctx.quadraticCurveTo(-fish.width * 0.75, tWave1, -fish.width * 0.45, 0);
+          ctx.closePath();
+          ctx.fill();
+
+          // Tail 2
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.45, 5);
+          ctx.quadraticCurveTo(-fish.width * 0.7, fish.height * 0.6 + tWave2, -fish.width * 0.9, fish.height * 0.5 + tWave2);
+          ctx.quadraticCurveTo(-fish.width * 0.75, tWave2, -fish.width * 0.45, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // Big bubbly eye
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.24, -fish.height * 0.15, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#1e293b";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.26, -fish.height * 0.15, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+
+        } else if (fish.type === "tang") {
+          // 3. Royal Sapphire Tang: Deep royal blue, brilliant yellow markings & tail
+          ctx.fillStyle = "#2563eb"; // Blue body
+          ctx.beginPath();
+          ctx.ellipse(0, 0, fish.width * 0.5, fish.height * 0.52, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Black wave tribal stripe on side
+          ctx.strokeStyle = "#1e293b";
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.moveTo(fish.width * 0.15, -fish.height * 0.2);
+          ctx.bezierCurveTo(-fish.width * 0.1, -fish.height * 0.4, -fish.width * 0.3, -fish.height * 0.1, -fish.width * 0.4, -fish.height * 0.2);
+          ctx.stroke();
+
+          // Yellow tail fin
+          ctx.save();
+          const tailAngle = Math.sin(fish.pathTime * 7) * 0.1;
+          ctx.rotate(tailAngle);
+          ctx.fillStyle = "#fbbf24"; // Bright yellow
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.45, 0);
+          ctx.lineTo(-fish.width * 0.8, -fish.height * 0.4);
+          ctx.lineTo(-fish.width * 0.65, 0);
+          ctx.lineTo(-fish.width * 0.8, fish.height * 0.4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // Yellow dorsal fin highlight
+          ctx.fillStyle = "#fbbf24";
+          ctx.beginPath();
+          ctx.ellipse(-fish.width * 0.15, -fish.height * 0.48, fish.width * 0.2, fish.height * 0.1, Math.PI / 8, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Eye
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.25, -fish.height * 0.15, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#000000";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.28, -fish.height * 0.15, 2.2, 0, Math.PI * 2);
+          ctx.fill();
+
+        } else if (fish.type === "firefish") {
+          // 4. Neon Firefish: Magenta-to-orange gradient body, long dorsal filament fin
+          const fGrad = ctx.createLinearGradient(-fish.width * 0.5, 0, fish.width * 0.5, 0);
+          fGrad.addColorStop(0, "#fb7185"); // Light pink
+          fGrad.addColorStop(0.4, "#ec4899"); // Magenta pink
+          fGrad.addColorStop(1, "#e11d48"); // Deep ruby red
+          ctx.fillStyle = fGrad;
+
+          ctx.beginPath();
+          ctx.ellipse(0, 0, fish.width * 0.5, fish.height * 0.45, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Long flowing filament dorsal fin (Unique firefish trademark)
+          ctx.save();
+          const dWave = Math.sin(fish.pathTime * 5) * 8;
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(fish.width * 0.1, -fish.height * 0.35);
+          ctx.quadraticCurveTo(-fish.width * 0.2 + dWave, -fish.height * 1.5, -fish.width * 0.5 + dWave, -fish.height * 1.2);
+          ctx.stroke();
+          ctx.restore();
+
+          // Wavy red-orange tail fin
+          ctx.save();
+          const fWave = Math.sin(fish.pathTime * 8) * 0.15;
+          ctx.rotate(fWave);
+          ctx.fillStyle = "#f43f5e";
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.45, 0);
+          ctx.lineTo(-fish.width * 0.82, -fish.height * 0.45);
+          ctx.lineTo(-fish.width * 0.68, 0);
+          ctx.lineTo(-fish.width * 0.82, fish.height * 0.45);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // Glow spot
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.28, -fish.height * 0.12, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#0f172a";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.3, -fish.height * 0.12, 1.8, 0, Math.PI * 2);
+          ctx.fill();
+
+        } else if (fish.type === "jellyfish") {
+          // 5. Nebula Jellyfish: Pulsing translucent cap, long waving tentacles
+          const pulse = 1 + Math.sin(fish.pathTime * 4) * 0.12;
+          const capW = fish.width * 0.4 * pulse;
+          const capH = fish.height * 0.45 * pulse;
+
+          // Tentacles waving using sine waves
+          ctx.save();
+          ctx.strokeStyle = "rgba(168, 85, 247, 0.45)"; // Translucent purple
+          ctx.lineWidth = 2;
+          for (let i = 0; i < 4; i++) {
+            ctx.beginPath();
+            const yOffset = -capH * 0.3 + (i * capH * 0.2);
+            ctx.moveTo(-capW * 0.5, yOffset);
+            
+            // Draw custom waving path for tentacle
+            let lastX = -capW * 0.5;
+            let lastY = yOffset;
+            const segs = 6;
+            const length = fish.width * 0.65;
+            for (let j = 0; j <= segs; j++) {
+              const x = -capW * 0.5 - (j * (length / segs));
+              const y = yOffset + Math.sin(fish.pathTime * 4 + j * 0.8 + i) * 12;
+              ctx.quadraticCurveTo(lastX, lastY, (lastX + x)/2, (lastY + y)/2);
+              lastX = x;
+              lastY = y;
+            }
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // Drawing glowing translucent jelly cap
+          const capGrad = ctx.createRadialGradient(-capW * 0.2, -capH * 0.2, 2, 0, 0, capW * 0.9);
+          capGrad.addColorStop(0, "#ffffff");
+          capGrad.addColorStop(0.3, "#c084fc"); // Lilac
+          capGrad.addColorStop(1, "rgba(168, 85, 247, 0.2)");
+          ctx.fillStyle = capGrad;
+
+          ctx.beginPath();
+          // Arc for the half dome
+          ctx.arc(0, 0, capW, -Math.PI / 2, Math.PI / 2, false);
+          ctx.closePath();
+          ctx.fill();
+
+          // Cap rim dots
+          ctx.fillStyle = "#ffffff";
+          for (let i = -3; i <= 3; i++) {
+            const angle = (i * Math.PI) / 8;
+            ctx.beginPath();
+            ctx.arc(capW * Math.cos(angle), capW * Math.sin(angle), 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+        } else if (fish.type === "puffer") {
+          // 6. Emerald Puffer: Round, spike-textured spiky emerald green body
+          ctx.fillStyle = "#10b981"; // Emerald
+          ctx.beginPath();
+          ctx.arc(0, 0, fish.width * 0.42, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw neon spikes pointing outward
+          ctx.strokeStyle = "#34d399";
+          ctx.lineWidth = 2.5;
+          const spikeCount = 12;
+          const outerR = fish.width * 0.52;
+          const innerR = fish.width * 0.42;
+          for (let i = 0; i < spikeCount; i++) {
+            const angle = (i * Math.PI * 2) / spikeCount;
+            ctx.beginPath();
+            ctx.moveTo(innerR * Math.cos(angle), innerR * Math.sin(angle));
+            ctx.lineTo(outerR * Math.cos(angle), outerR * Math.sin(angle));
+            ctx.stroke();
+          }
+
+          // Small cute flapping fins
+          ctx.fillStyle = "#34d399";
+          ctx.beginPath();
+          ctx.ellipse(-fish.width * 0.2, -fish.height * 0.3, fish.width * 0.12, fish.height * 0.08, -Math.PI / 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Big cute cartoon eyes
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.18, -fish.height * 0.14, 5.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#1e293b";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.22, -fish.height * 0.14, 3, 0, Math.PI * 2);
+          ctx.fill();
+
+        } else if (fish.type === "swordfish") {
+          // 7. Razor Neon Swordfish: Streamlined metallic cyan, huge sailfin, long sword beak
+          const sGrad = ctx.createLinearGradient(-fish.width * 0.5, 0, fish.width * 0.5, 0);
+          sGrad.addColorStop(0, "#0891b2"); // Dark Cyan
+          sGrad.addColorStop(0.6, "#22d3ee"); // Neon Cyan
+          sGrad.addColorStop(1, "#e2e8f0"); // Metallic silver tip
+          ctx.fillStyle = sGrad;
+
+          ctx.beginPath();
+          ctx.ellipse(0, 0, fish.width * 0.5, fish.height * 0.42, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Long sharp sword spear
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(fish.width * 0.48, -fish.height * 0.05);
+          ctx.lineTo(fish.width * 0.95, -fish.height * 0.08); // Sword pointing forward
+          ctx.stroke();
+
+          // High-contrast large sail dorsal fin on back
+          ctx.fillStyle = "#0284c7"; // Sky Blue
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.2, -fish.height * 0.38);
+          ctx.quadraticCurveTo(-fish.width * 0.05, -fish.height * 1.1, fish.width * 0.2, -fish.height * 0.3);
+          ctx.lineTo(-fish.width * 0.05, -fish.height * 0.3);
+          ctx.closePath();
+          ctx.fill();
+
+          // Waving swordfish tail
+          ctx.save();
+          const sWave = Math.sin(fish.pathTime * 9) * 0.18;
+          ctx.rotate(sWave);
+          ctx.fillStyle = "#0369a1";
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.45, 0);
+          ctx.lineTo(-fish.width * 0.78, -fish.height * 0.55);
+          ctx.lineTo(-fish.width * 0.62, 0);
+          ctx.lineTo(-fish.width * 0.78, fish.height * 0.55);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // Eye
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.25, -fish.height * 0.12, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#000000";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.27, -fish.height * 0.12, 1.8, 0, Math.PI * 2);
+          ctx.fill();
+
+        } else if (fish.type === "shark") {
+          // 8. Cybersteel Overlord Shark: Huge steel gray/blue, neon blue patterns, sharp teeth
+          ctx.fillStyle = "#475569"; // Slate gray body
+          ctx.beginPath();
+          ctx.ellipse(0, 0, fish.width * 0.5, fish.height * 0.46, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // White belly
+          ctx.fillStyle = "#cbd5e1"; // light slate
+          ctx.beginPath();
+          ctx.ellipse(0, fish.height * 0.18, fish.width * 0.4, fish.height * 0.24, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Neon blue bioluminescent tech stripes
+          ctx.strokeStyle = "#38bdf8";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.1, -fish.height * 0.25);
+          ctx.lineTo(fish.width * 0.05, -fish.height * 0.1);
+          ctx.moveTo(-fish.width * 0.22, -fish.height * 0.2);
+          ctx.lineTo(-fish.width * 0.08, -fish.height * 0.05);
+          ctx.stroke();
+
+          // Large sharp shark dorsal fin
+          ctx.fillStyle = "#334155";
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.15, -fish.height * 0.4);
+          ctx.quadraticCurveTo(-fish.width * 0.05, -fish.height * 1.05, fish.width * 0.12, -fish.height * 0.35);
+          ctx.closePath();
+          ctx.fill();
+
+          // Powerful shark tail swishing
+          ctx.save();
+          const shWave = Math.sin(fish.pathTime * 5) * 0.12;
+          ctx.rotate(shWave);
+          ctx.fillStyle = "#334155";
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.48, 0);
+          ctx.lineTo(-fish.width * 0.8, -fish.height * 0.6);
+          ctx.lineTo(-fish.width * 0.65, 0);
+          ctx.lineTo(-fish.width * 0.8, fish.height * 0.6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // Angry shark eye
+          ctx.fillStyle = "#ef4444"; // Red eye
+          ctx.beginPath();
+          ctx.moveTo(fish.width * 0.22, -fish.height * 0.18);
+          ctx.lineTo(fish.width * 0.32, -fish.height * 0.12);
+          ctx.lineTo(fish.width * 0.22, -fish.height * 0.08);
+          ctx.closePath();
+          ctx.fill();
+
+          // Razor teeth lines
           ctx.strokeStyle = "#ffffff";
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.arc(0, -10, 12, 0, Math.PI * 2);
+          ctx.moveTo(fish.width * 0.25, fish.height * 0.08);
+          ctx.lineTo(fish.width * 0.35, fish.height * 0.06);
+          ctx.lineTo(fish.width * 0.28, fish.height * 0.12);
+          ctx.stroke();
+
+        } else if (fish.type === "toad") {
+          // 9. Fortune Toad: Golden-amber body, huge red gemstone eyes, hovering rotating golden coin
+          ctx.fillStyle = "#fbbf24"; // Rich gold
+          ctx.beginPath();
+          ctx.ellipse(0, 0, fish.width * 0.5, fish.height * 0.65, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Green/red bumpy spots
+          ctx.fillStyle = "#f59e0b";
+          ctx.beginPath();
+          ctx.arc(-fish.width * 0.15, -fish.height * 0.25, 4, 0, Math.PI * 2);
+          ctx.arc(fish.width * 0.02, -fish.height * 0.3, 5, 0, Math.PI * 2);
+          ctx.arc(-fish.width * 0.28, -fish.height * 0.1, 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Huge red glowing eyes
+          ctx.fillStyle = "#ef4444";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.26, -fish.height * 0.22, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#000000";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.28, -fish.height * 0.22, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Hovering golden Chinese cash coin rotating slightly
+          ctx.save();
+          const coinRotate = fish.pathTime * 2;
+          ctx.translate(-fish.width * 0.05, -fish.height * 0.3);
+          ctx.rotate(coinRotate);
+          
+          ctx.fillStyle = "#fbbf24";
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, 16, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
+
+          // Square center hole of coin
+          ctx.fillStyle = "#1e293b";
+          ctx.fillRect(-4, -4, 8, 8);
+          ctx.restore();
+
+        } else if (fish.type === "sunfish") {
+          // 10. Cosmic Rainbow Sunfish: Huge tall disc, glowing shifting rainbow spectrum gradient
+          const rGrad = ctx.createLinearGradient(-fish.width * 0.5, 0, fish.width * 0.5, 0);
+          rGrad.addColorStop(0, "#f43f5e"); // Rose Red
+          rGrad.addColorStop(0.2, "#f59e0b"); // Yellow Gold
+          rGrad.addColorStop(0.4, "#10b981"); // Emerald Green
+          rGrad.addColorStop(0.6, "#06b6d4"); // Cyan Blue
+          rGrad.addColorStop(0.8, "#6366f1"); // Indigo
+          rGrad.addColorStop(1, "#ec4899"); // Magenta
+          ctx.fillStyle = rGrad;
+
+          ctx.beginPath();
+          // Extremely tall oval body (typical sunfish profile)
+          ctx.ellipse(0, 0, fish.width * 0.5, fish.height * 0.72, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // High top and bottom fins waggling
+          ctx.save();
+          const finWag = Math.sin(fish.pathTime * 3) * 0.2;
+          
+          // Dorsal fin
+          ctx.fillStyle = "#6366f1";
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.15, -fish.height * 0.6);
+          ctx.quadraticCurveTo(-fish.width * 0.2 + finWag * 15, -fish.height * 1.3, fish.width * 0.05, -fish.height * 0.6);
+          ctx.closePath();
+          ctx.fill();
+
+          // Ventral fin
+          ctx.fillStyle = "#ec4899";
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.15, fish.height * 0.6);
+          ctx.quadraticCurveTo(-fish.width * 0.2 + finWag * 15, fish.height * 1.3, fish.width * 0.05, fish.height * 0.6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          // Scalloped rear rudder margin
+          ctx.fillStyle = "#cbd5e1";
+          ctx.beginPath();
+          ctx.ellipse(-fish.width * 0.45, 0, fish.width * 0.12, fish.height * 0.55, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Giant fish eye
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.25, -fish.height * 0.15, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#0f172a";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.27, -fish.height * 0.15, 3, 0, Math.PI * 2);
+          ctx.fill();
+
+        } else if (fish.type === "kraken" && fish.isBoss) {
+          // 11. DEEP SEA KRAKEN BOSS: Huge rose-pink head, piercing yellow eyes, 6 dynamic sinewave tentacles
+          ctx.fillStyle = "#f43f5e"; // Rose Pink
+          ctx.beginPath();
+          // Massive oval head bulbous
+          ctx.ellipse(0, 0, fish.width * 0.42, fish.height * 0.42, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Two big piercing yellow glowing eyes with slit pupils
+          ctx.fillStyle = "#fbbf24"; // yellow glow
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = "#eab308";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.14, -fish.height * 0.14, 10, 0, Math.PI * 2);
+          ctx.arc(fish.width * 0.14, fish.height * 0.14, 10, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0; // reset shadow
+
+          ctx.fillStyle = "#000000"; // slit pupil
+          ctx.fillRect(fish.width * 0.12, -fish.height * 0.18, 3.5, 9);
+          ctx.fillRect(fish.width * 0.12, fish.height * 0.10, 3.5, 9);
+
+          // 6 active, procedural tentacles that wave around trailing behind
+          ctx.save();
+          ctx.strokeStyle = "#e11d48"; // deeper rose red
+          ctx.lineWidth = 6;
+          for (let i = 0; i < 6; i++) {
+            ctx.beginPath();
+            const yOffset = -fish.height * 0.3 + (i * fish.height * 0.12);
+            ctx.moveTo(-fish.width * 0.22, yOffset);
+            
+            let lastX = -fish.width * 0.22;
+            let lastY = yOffset;
+            const segments = 8;
+            const tLength = fish.width * 0.65;
+            for (let j = 0; j <= segments; j++) {
+              const x = -fish.width * 0.22 - (j * (tLength / segments));
+              const y = yOffset + Math.sin(fish.pathTime * 3 + j * 0.7 + i * 1.5) * 35;
+              ctx.lineTo(x, y);
+              
+              // Draw small white suction cup dots periodically on tentacles
+              if (j > 1 && j % 2 === 0) {
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(x, y + 4, 3, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              lastX = x;
+              lastY = y;
+            }
+            ctx.stroke();
+          }
+          ctx.restore();
+
+        } else if (fish.type === "dragon" && fish.isBoss) {
+          // 12. GOLDEN DRAGON KING BOSS: Segmented serpentine body waving in beautiful sinewaves
+          ctx.save();
+          const segments = 6;
+          const diameter = fish.width * 0.18;
+          ctx.fillStyle = "#fbbf24"; // Bright gold segments
+
+          // Render waving trailing segmented dragon scales
+          for (let i = segments; i >= 1; i--) {
+            const scaleFactor = 1 - (i * 0.08);
+            const lagTime = i * 0.4;
+            const segmentX = -i * (fish.width * 0.13);
+            const segmentY = Math.sin(fish.pathTime * 3.5 - lagTime) * 38;
+            
+            // Draw overlapping scale circle
+            ctx.beginPath();
+            ctx.arc(segmentX, segmentY, diameter * scaleFactor, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw orange flame-scale accents
+            ctx.fillStyle = "#f97316";
+            ctx.beginPath();
+            ctx.arc(segmentX - 4, segmentY - 4, (diameter * scaleFactor) * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#fbbf24"; // revert
+          }
+          ctx.restore();
+
+          // Majestic Dragon Head
+          ctx.fillStyle = "#fbbf24";
+          ctx.beginPath();
+          // Draw head ellipse
+          ctx.ellipse(0, 0, fish.width * 0.22, fish.height * 0.38, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Long golden whiskers
+          ctx.strokeStyle = "#fbbf24";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(fish.width * 0.15, 0);
+          ctx.bezierCurveTo(fish.width * 0.35, -fish.height * 0.3, fish.width * 0.42, fish.height * 0.2, fish.width * 0.55, -fish.height * 0.1);
+          ctx.stroke();
+
+          // Dragon horn spikes
+          ctx.fillStyle = "#f97316";
+          ctx.beginPath();
+          ctx.moveTo(-fish.width * 0.1, -fish.height * 0.25);
+          ctx.lineTo(-fish.width * 0.25, -fish.height * 0.55);
+          ctx.lineTo(0, -fish.height * 0.3);
+          ctx.closePath();
+          ctx.fill();
+
+          // Glowing neon crimson dragon eyes
+          ctx.fillStyle = "#ef4444";
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = "#ef4444";
+          ctx.beginPath();
+          ctx.arc(fish.width * 0.08, -fish.height * 0.15, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0; // reset
+
         } else {
-          // Standard Fish Ellipse Body
+          // Fallback Standard fish rendering
           ctx.fillStyle = fish.color;
           ctx.beginPath();
           ctx.ellipse(0, 0, fish.width * 0.5, fish.height * 0.5, 0, 0, Math.PI * 2);
@@ -806,10 +1481,22 @@ export default function GameArena({
               fish.isDying = true;
               playSynthSound("capture");
 
+              // Trigger screen-shake based on captured fish severity
+              if (fish.isBoss) {
+                triggerShake(8, 25);
+              } else if (fish.scoreValue >= 50) {
+                triggerShake(4, 12);
+              } else {
+                triggerShake(1.5, 6);
+              }
+
               // Trigger special visual effect explosion
               createParticles(fish.x, fish.y, fish.color, fish.isBoss ? 40 : 15, "coin");
 
               const rewardCoins = fish.scoreValue * bullet.level;
+
+              // Generate floating text particle showing the score value
+              createParticles(fish.x, fish.y, "#fbbf24", 1, "text", `+$${rewardCoins.toLocaleString()}`);
 
               // Apply capturing reward to correct wallet
               if (shooter) {
@@ -900,6 +1587,15 @@ export default function GameArena({
           ctx.beginPath();
           ctx.arc(0, 0, p.size, 0, Math.PI * 2);
           ctx.stroke();
+        } else if (p.type === "text" && p.text) {
+          ctx.font = "bold 13px 'Space Grotesk', 'Inter', sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.strokeStyle = "#020617";
+          ctx.lineWidth = 3.5;
+          ctx.strokeText(p.text, 0, 0);
+          ctx.fillStyle = p.color;
+          ctx.fillText(p.text, 0, 0);
         } else {
           // Spark or Hit marker
           ctx.beginPath();
@@ -928,6 +1624,90 @@ export default function GameArena({
           type: "bubble",
         });
       }
+
+      // 7.5 Active Laser Sights & Lock-On Crosshair Reticles
+      playersRef.current.forEach((player, idx) => {
+        if (!player.connected) return;
+        
+        let anchorX = 0;
+        let anchorY = 0;
+        if (idx === 0) {
+          anchorX = canvas.width / 2;
+          anchorY = canvas.height - 20;
+        } else if (idx === 1) {
+          anchorX = canvas.width - 150;
+          anchorY = canvas.height - 20;
+        } else if (idx === 2) {
+          anchorX = 150;
+          anchorY = 20;
+        } else if (idx === 3) {
+          anchorX = canvas.width - 150;
+          anchorY = 20;
+        }
+
+        let targetX = 0;
+        let targetY = 0;
+        let hasTarget = false;
+
+        if (player.isBot) {
+          const targetId = botTargetsRef.current[player.id];
+          const targetFish = fishRef.current.find((f) => f.id === targetId && !f.isDying);
+          if (targetFish) {
+            targetX = targetFish.x;
+            targetY = targetFish.y;
+            hasTarget = true;
+          }
+        } else {
+          // For the human player, show an elegant target line from the cannon to their cursor
+          targetX = mousePos.x;
+          targetY = mousePos.y;
+          hasTarget = true;
+        }
+
+        if (hasTarget) {
+          ctx.save();
+          // Draw a beautiful thin glowing laser guide
+          ctx.strokeStyle = player.color;
+          ctx.globalAlpha = player.isBot ? 0.25 : 0.45;
+          ctx.lineWidth = player.isBot ? 1 : 1.5;
+          ctx.setLineDash([4, 6]);
+          
+          ctx.beginPath();
+          ctx.moveTo(anchorX, anchorY);
+          ctx.lineTo(targetX, targetY);
+          ctx.stroke();
+
+          // Draw a small high-tech locking reticle at the target
+          ctx.setLineDash([]);
+          ctx.globalAlpha = player.isBot ? 0.45 : 0.85;
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = player.color;
+          ctx.shadowBlur = player.isBot ? 4 : 8;
+          ctx.shadowColor = player.color;
+          
+          ctx.beginPath();
+          ctx.arc(targetX, targetY, player.isBot ? 18 : 22, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Draw reticle crosshair ticks
+          ctx.beginPath();
+          // Top tick
+          ctx.moveTo(targetX, targetY - (player.isBot ? 24 : 28));
+          ctx.lineTo(targetX, targetY - (player.isBot ? 12 : 14));
+          // Bottom tick
+          ctx.moveTo(targetX, targetY + (player.isBot ? 24 : 28));
+          ctx.lineTo(targetX, targetY + (player.isBot ? 12 : 14));
+          // Left tick
+          ctx.moveTo(targetX - (player.isBot ? 24 : 28), targetY);
+          ctx.lineTo(targetX - (player.isBot ? 12 : 14), targetY);
+          // Right tick
+          ctx.moveTo(targetX + (player.isBot ? 24 : 28), targetY);
+          ctx.lineTo(targetX + (player.isBot ? 12 : 14), targetY);
+          ctx.stroke();
+
+          ctx.restore();
+        }
+      });
 
       // 8. Draw Player Cannons & HUD tags (Anchored around borders)
       playersRef.current.forEach((player, idx) => {
@@ -1058,6 +1838,8 @@ export default function GameArena({
           botEmotes: [playersRef.current[1].lastEmote || "", playersRef.current[2].lastEmote || "", playersRef.current[3].lastEmote || ""],
         });
       }
+
+      ctx.restore(); // Balance the screen shake ctx.save() at the start of tick()
 
       animId = requestAnimationFrame(tick);
     };
